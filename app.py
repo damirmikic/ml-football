@@ -1,7 +1,3 @@
-###############################################
-# Optimized app.py — Deployable on Streamlit Cloud
-###############################################
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,30 +8,24 @@ import shap
 import warnings
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="Football Match Predictor", layout="wide")
+st.set_page_config(page_title="Football ML Predictor", layout="wide")
+
+st.title("⚽ Football ML Predictor (Upload CSV Version)")
 
 
 ############################################################
-# 0) DEFINITIONS
+# 1) UPLOAD CSV
 ############################################################
 
-TARGET_COLS = {
-    "shots_home": "suth",
-    "shots_away": "suta",
-    "corners_home": "corh",
-    "corners_away": "cora",
-    "cards_home": "yellowh",
-    "cards_away": "yellowa",
-}
+uploaded = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
 
+if uploaded is None:
+    st.info("Please upload your mldatafootball.csv to begin.")
+    st.stop()
 
-############################################################
-# 1) LOAD CSV  (FAST + CACHED)
-############################################################
-
-@st.cache_data(show_spinner=True)
-def load_data():
-    raw = pd.read_csv("mldatafootball.csv", header=None)
+@st.cache_data
+def load_csv(uploaded):
+    raw = pd.read_csv(uploaded, header=None)
     df = raw[0].str.split(";", expand=True)
     header = df.iloc[0].tolist()
     df = df.drop(index=0).reset_index(drop=True)
@@ -46,18 +36,15 @@ def load_data():
         df[col] = pd.to_numeric(df[col], errors="ignore")
     return df
 
-df = load_data()
+df = load_csv(uploaded)
 
 
 ############################################################
-# 2) BUILD FEATURE ENGINEERING (CACHED)
+# 2) ODDS NORMALIZATION + EXPECTED METRICS
 ############################################################
 
-@st.cache_data(show_spinner=True)
-def preprocess(df):
+def normalize_odds(df):
     df = df.copy()
-
-    # Odds normalization
     odds_cols = ["home_win","draw","away_win","over2.5","under2.5","gg","ng"]
     for col in odds_cols:
         if col in df.columns:
@@ -75,8 +62,12 @@ def preprocess(df):
             s = df[valid].sum(axis=1)
             for c in valid:
                 df[c.replace("p_","pn_")] = df[c] / s
+    return df
 
-    # Expected metrics
+
+def add_expected_metrics(df):
+    df = df.copy()
+
     df["xG_total"] = 2.5 + (df["pn_over2.5"] - 0.5) * 2.8
     df["att_share_home"] = df["pn_home_win"] + 0.5 * df["pn_draw"]
     df["att_share_away"] = df["pn_away_win"] + 0.5 * df["pn_draw"]
@@ -86,7 +77,6 @@ def preprocess(df):
     )
     df["xG_away"] = df["xG_total"] - df["xG_home"]
 
-    # Dataset-derived calibrated factors
     beta_home = 8.02
     beta_away = 8.73
     gamma = 0.364
@@ -95,8 +85,10 @@ def preprocess(df):
 
     df["xShots_home"] = df["xG_home"] * beta_home
     df["xShots_away"] = df["xG_away"] * beta_away
+
     df["xSOT_home"] = df["xShots_home"] * gamma
     df["xSOT_away"] = df["xShots_away"] * gamma
+
     df["xCorners_home"] = df["xShots_home"] * delta_home
     df["xCorners_away"] = df["xShots_away"] * delta_away
 
@@ -108,44 +100,50 @@ def preprocess(df):
     df["xFouls_home"] = (1 - df["pos_home"]) * foul_rate * 0.5
     df["xFouls_away"] = (1 - df["pos_away"]) * foul_rate * 0.5
 
-    df["tempo_factor"] = 0.5 + df["pn_over2.5"]
-
     theta_home = 0.176
     theta_away = 0.193
+    df["tempo_factor"] = 0.5 + df["pn_over2.5"]
+
     df["xCards_home"] = df["xFouls_home"] * theta_home * df["tempo_factor"]
     df["xCards_away"] = df["xFouls_away"] * theta_away * df["tempo_factor"]
 
     return df
 
-df = preprocess(df)
+
+df = normalize_odds(df)
+df = add_expected_metrics(df)
 
 
 ############################################################
-# 3) BUILD ML DATASET (CACHED)
+# 3) BUILD ML DATASET
 ############################################################
 
-@st.cache_data(show_spinner=True)
-def build_ml(df):
-    ml = df.dropna(subset=TARGET_COLS.values())
-    feature_cols = [c for c in df.columns if c not in TARGET_COLS.values()]
-    return ml, feature_cols
+TARGET_COLS = {
+    "shots_home": "suth",
+    "shots_away": "suta",
+    "corners_home": "corh",
+    "corners_away": "cora",
+    "cards_home": "yellowh",
+    "cards_away": "yellowa",
+}
 
-ml_df, feature_cols = build_ml(df)
+ml_df = df.dropna(subset=TARGET_COLS.values())
+feature_cols = [c for c in df.columns if c not in TARGET_COLS.values()]
 
 
 ############################################################
 # 4) TRAIN MODELS (CACHED)
 ############################################################
 
-@st.cache_resource(show_spinner=True)
-def train_models(ml_df, feature_cols):
+@st.cache_resource
+def train_models():
     models = {}
     for name, target in TARGET_COLS.items():
         X = ml_df[feature_cols]
         y = ml_df[target]
 
         model = XGBRegressor(
-            n_estimators=300,
+            n_estimators=250,
             max_depth=5,
             learning_rate=0.05,
             subsample=0.8,
@@ -154,135 +152,109 @@ def train_models(ml_df, feature_cols):
         )
         model.fit(X, y)
         models[name] = model
-
     return models
 
-models = train_models(ml_df, feature_cols)
+models = train_models()
 
 
 ############################################################
-# 5) PREDICTION FUNCTION
+# 5) PREDICT MATCH UI
 ############################################################
 
-def predict_match(row):
-    preds = {}
-    for name, model in models.items():
-        preds[name] = float(model.predict(row[feature_cols])[0])
-    return preds
+st.header("Predict Future Match")
 
+leagues = sorted(df["country"].unique())
+league = st.selectbox("League", leagues)
 
-############################################################
-# STREAMLIT UI
-############################################################
+teams = sorted(df[df["country"] == league]["home"].unique())
+col1, col2 = st.columns(2)
+home = col1.selectbox("Home Team", teams)
+away = col2.selectbox("Away Team", teams)
 
-st.title("⚽ Football Match Predictor (Fast + Cloud-Optimized)")
+st.subheader("Enter Odds")
+c1, c2, c3 = st.columns(3)
+home_win = c1.number_input("Home Win", value=2.00)
+draw = c2.number_input("Draw", value=3.30)
+away_win = c3.number_input("Away Win", value=3.40)
 
-tab1, tab2, tab3 = st.tabs(["Predict Match", "League Predictability", "Explainability"])
+c4, c5, c6 = st.columns(3)
+over25 = c4.number_input("Over 2.5", value=2.00)
+under25 = c5.number_input("Under 2.5", value=1.85)
+gg = c6.number_input("BTTS Yes", value=1.80)
+ng = st.number_input("BTTS No", value=1.90)
 
+if st.button("Predict Stats"):
+    row = pd.DataFrame([{
+        **{c:0 for c in feature_cols},
+        "home_win": home_win,
+        "draw": draw,
+        "away_win": away_win,
+        "over2.5": over25,
+        "under2.5": under25,
+        "gg": gg,
+        "ng": ng,
+        "country": league,
+        "home": home,
+        "away": away,
+        "season": df["season"].max(),
+        "round": 1
+    }])
 
-############################################################
-# TAB 1 – PREDICT MATCH
-############################################################
+    row = normalize_odds(row)
+    row = add_expected_metrics(row)
 
-with tab1:
-    st.subheader("Select match and enter odds")
+    preds = {name: models[name].predict(row[feature_cols])[0]
+             for name in models}
 
-    leagues = sorted(df["country"].unique())
-    league = st.selectbox("League", leagues)
+    st.subheader("Predicted Statistics")
 
-    home_teams = sorted(df[df["country"] == league]["home"].unique())
-    away_teams = home_teams
+    ca, cb = st.columns(2)
+    ca.metric("Home Shots", f"{preds['shots_home']:.1f}")
+    cb.metric("Away Shots", f"{preds['shots_away']:.1f}")
 
-    col1, col2 = st.columns(2)
-    home = col1.selectbox("Home Team", home_teams)
-    away = col2.selectbox("Away Team", away_teams)
+    cc, cd = st.columns(2)
+    cc.metric("Home Corners", f"{preds['corners_home']:.1f}")
+    cd.metric("Away Corners", f"{preds['corners_away']:.1f}")
 
-    colA, colB, colC = st.columns(3)
-    home_odds = colA.number_input("Home Win", value=2.00)
-    draw_odds = colB.number_input("Draw", value=3.20)
-    away_odds = colC.number_input("Away Win", value=3.50)
-
-    colD, colE, colF = st.columns(3)
-    over25 = colD.number_input("Over 2.5", value=2.00)
-    under25 = colE.number_input("Under 2.5", value=1.85)
-    gg = colF.number_input("BTTS Yes", value=1.80)
-    ng = st.number_input("BTTS No", value=1.90)
-
-    if st.button("Predict"):
-        # Build input row
-        row = pd.DataFrame([{
-            **{c:0 for c in feature_cols},
-            "home_win": home_odds,
-            "draw": draw_odds,
-            "away_win": away_odds,
-            "over2.5": over25,
-            "under2.5": under25,
-            "gg": gg,
-            "ng": ng,
-            "country": league,
-            "season": df["season"].max(),
-            "round": 1,
-            "home": home,
-            "away": away,
-        }])
-
-        # normalize + expected metrics
-        row = preprocess(normalize_odds(row))
-
-        preds = predict_match(row)
-
-        st.subheader("Predicted Stats")
-        c1, c2 = st.columns(2)
-        c1.metric("Home Shots", f"{preds['shots_home']:.1f}")
-        c2.metric("Away Shots", f"{preds['shots_away']:.1f}")
-
-        c3, c4 = st.columns(2)
-        c3.metric("Home Corners", f"{preds['corners_home']:.1f}")
-        c4.metric("Away Corners", f"{preds['corners_away']:.1f}")
-
-        c5, c6 = st.columns(2)
-        c5.metric("Home Cards", f"{preds['cards_home']:.2f}")
-        c6.metric("Away Cards", f"{preds['cards_away']:.2f}")
+    ce, cf = st.columns(2)
+    ce.metric("Home Cards", f"{preds['cards_home']:.2f}")
+    cf.metric("Away Cards", f"{preds['cards_away']:.2f}")
 
 
 ############################################################
-# TAB 2 – LEAGUE PREDICTABILITY
+# 6) LEAGUE PREDICTABILITY
 ############################################################
 
-with tab2:
-    st.subheader("Predictability Index by League")
+st.header("League Predictability")
 
-    rows = []
-    for lg, subset in ml_df.groupby("country"):
-        if len(subset) < 200:
-            continue
-        for name, model in models.items():
-            y = subset[TARGET_COLS[name]]
-            pred = model.predict(subset[feature_cols])
-            rmse = mean_squared_error(y, pred, squared=False)
-            std = y.std()
-            rows.append({"league": lg, "target": name, "predictability": 1 - rmse/std})
+rows = []
+for lg, subset in ml_df.groupby("country"):
+    if len(subset) < 200:
+        continue
+    for name in models:
+        y = subset[TARGET_COLS[name]]
+        pred = models[name].predict(subset[feature_cols])
+        rmse = mean_squared_error(y, pred, squared=False)
+        std = y.std()
+        rows.append({"league": lg, "target": name, "predictability": 1 - rmse/std})
 
-    pred_index = pd.DataFrame(rows)
-    st.dataframe(pred_index.sort_values(["target", "predictability"], ascending=False))
+pred_table = pd.DataFrame(rows)
+st.dataframe(pred_table.sort_values(["target","predictability"], ascending=False))
 
 
 ############################################################
-# TAB 3 – SHAP (LAZY LOADED)
+# 7) SHAP INTERPRETATION
 ############################################################
 
-with tab3:
-    st.subheader("Model Explainability (SHAP)")
+st.header("SHAP Explainability")
 
-    shap_target = st.selectbox("Select model", list(models.keys()))
-    st.write("Computing SHAP… (first time may take ~10s)")
+model_name = st.selectbox("Select target", list(models.keys()))
 
-    X_sample = ml_df[feature_cols].sample(min(1500, len(ml_df)), random_state=42)
+st.write("Computing SHAP (first run may take 10 seconds)...")
 
-    explainer = shap.TreeExplainer(models[shap_target])
-    shap_values = explainer.shap_values(X_sample)
+X_sample = ml_df[feature_cols].sample(min(800, len(ml_df)), random_state=42)
+explainer = shap.TreeExplainer(models[model_name])
+shap_vals = explainer.shap_values(X_sample)
 
-    fig = shap.summary_plot(shap_values, X_sample, show=False)
-    st.pyplot(fig)
-
-st.success("App Ready!")
+fig = shap.summary_plot(shap_vals, X_sample, show=False)
+st.pyplot(fig)
