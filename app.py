@@ -138,16 +138,26 @@ if uploaded is None:
 
 @st.cache_data
 def load_csv(file):
+    # Try reading as normal CSV first
+    try:
+        df = pd.read_csv(file)
+        # Check if this looks valid (has necessary columns)
+        if len(df.columns) > 5:
+            return df
+    except:
+        pass
+
+    # Fallback: single-column semicolon-separated CSV (your old format)
     raw = pd.read_csv(file, header=None)
-    df = raw[0].str.split(";", expand=True)
-    header = df.iloc[0].tolist()
-    df = df.drop(index=0).reset_index(drop=True)
-    df.columns = header
-    df = df.replace({"": np.nan, "None": np.nan})
-    return df
+    if raw.shape[1] == 1:
+        df = raw[0].str.split(";", expand=True)
+        header = df.iloc[0].tolist()
+        df = df.drop(index=0).reset_index(drop=True)
+        df.columns = header
+        return df
 
-df = load_csv(uploaded)
-
+    # If no method works
+    raise ValueError("Unrecognized CSV format. Upload a normal CSV or semicolon-delimited single-column CSV.")
 
 ############################################################
 # 🟥 Validate Columns
