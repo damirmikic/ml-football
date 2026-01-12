@@ -705,756 +705,756 @@ with col4:
         'home_score', 'away_score', 'actual_pts_home', 'actual_pts_away'
     ]
 
-    df_display = df_processed[display_columns].copy()
+df_display = df_processed[display_columns].copy()
 
-    # Format probabilities and xPTS
-    prob_cols = ['true_prob_home', 'true_prob_draw', 'true_prob_away']
-    for col in prob_cols:
-        df_display[col] = df_display[col].apply(lambda x: f"{x:.1%}")
+# Format probabilities and xPTS
+prob_cols = ['true_prob_home', 'true_prob_draw', 'true_prob_away']
+for col in prob_cols:
+    df_display[col] = df_display[col].apply(lambda x: f"{x:.1%}" if pd.notna(x) else "N/A")
 
-        xpts_cols = ['xPTS_home', 'xPTS_away']
-        for col in xpts_cols:
-            df_display[col] = df_display[col].apply(lambda x: f"{x:.2f}")
+xpts_cols = ['xPTS_home', 'xPTS_away']
+for col in xpts_cols:
+    df_display[col] = df_display[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
 
-        st.dataframe(df_display, use_container_width=True, height=400)
+st.dataframe(df_display, use_container_width=True, height=400)
 
-        # Filters
-        st.header("🔍 Filter Data")
+# Filters
+st.header("🔍 Filter Data")
 
-        col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
-        with col1:
-            countries = ['All'] + sorted(df_processed['league'].unique().tolist())
-            selected_country = st.selectbox("League/Country", countries, key='country_filter')
+with col1:
+    countries = ['All'] + sorted(df_processed['league'].unique().tolist())
+    selected_country = st.selectbox("League/Country", countries, key='country_filter')
 
-        with col2:
-            all_seasons = sorted(df_processed['season'].unique().tolist())
-            if selected_country != 'All':
-                available_seasons = sorted(df_processed[df_processed['league'] == selected_country]['season'].unique().tolist())
-            else:
-                available_seasons = all_seasons
+with col2:
+    all_seasons = sorted(df_processed['season'].unique().tolist())
+    if selected_country != 'All':
+        available_seasons = sorted(df_processed[df_processed['league'] == selected_country]['season'].unique().tolist())
+    else:
+        available_seasons = all_seasons
 
-            season_option = st.radio("Season Selection", ["All Seasons", "Specific Season(s)"], horizontal=True)
+    season_option = st.radio("Season Selection", ["All Seasons", "Specific Season(s)"], horizontal=True)
+    
+    if season_option == "All Seasons":
+        selected_seasons = available_seasons
+    else:
+        selected_seasons = st.multiselect(
+            "Select Season(s)",
+            available_seasons,
+            default=[available_seasons[-1]] if available_seasons else []
+        )
 
-            if season_option == "All Seasons":
-                selected_seasons = available_seasons
-            else:
-                selected_seasons = st.multiselect(
-                    "Select Season(s)",
-                    available_seasons,
-                    default=[available_seasons[-1]] if available_seasons else []
-                )
+with col3:
+    # Filter teams based on selected league
+    if selected_country != 'All':
+        league_teams = set(
+            df_processed[df_processed['league'] == selected_country]['home_team'].unique().tolist() +
+            df_processed[df_processed['league'] == selected_country]['away_team'].unique().tolist()
+        )
+        teams = ['All'] + sorted(league_teams)
+    else:
+        teams = ['All'] + sorted(
+            set(df_processed['home_team'].unique().tolist() +
+                df_processed['away_team'].unique().tolist())
+        )
+    selected_team = st.selectbox("Team", teams, key='team_filter')
 
-        with col3:
-            # Filter teams based on selected league
-            if selected_country != 'All':
-                league_teams = set(
-                    df_processed[df_processed['league'] == selected_country]['home_team'].unique().tolist() +
-                    df_processed[df_processed['league'] == selected_country]['away_team'].unique().tolist()
-                )
-                teams = ['All'] + sorted(league_teams)
-            else:
-                teams = ['All'] + sorted(
-                    set(df_processed['home_team'].unique().tolist() +
-                        df_processed['away_team'].unique().tolist())
-                )
-            selected_team = st.selectbox("Team", teams, key='team_filter')
+# Apply filters
+df_filtered = df_processed.copy()
 
-        # Apply filters
-        df_filtered = df_processed.copy()
+if selected_country != 'All':
+    df_filtered = df_filtered[df_filtered['league'] == selected_country]
 
-        if selected_country != 'All':
-            df_filtered = df_filtered[df_filtered['league'] == selected_country]
+if season_option == "Specific Season(s)" and selected_seasons:
+    df_filtered = df_filtered[df_filtered['season'].isin(selected_seasons)]
 
-        if season_option == "Specific Season(s)" and selected_seasons:
-            df_filtered = df_filtered[df_filtered['season'].isin(selected_seasons)]
+if selected_team != 'All':
+    df_filtered = df_filtered[
+        (df_filtered['home_team'] == selected_team) |
+        (df_filtered['away_team'] == selected_team)
+    ]
 
-        if selected_team != 'All':
-            df_filtered = df_filtered[
-                (df_filtered['home_team'] == selected_team) |
-                (df_filtered['away_team'] == selected_team)
-            ]
-
-        if len(df_filtered) > 0:
-            st.write(f"**Filtered Results:** {len(df_filtered):,} fixtures")
+if len(df_filtered) > 0:
+    st.write(f"**Filtered Results:** {len(df_filtered):,} fixtures")
 
             # League Standings Tables (only show when a specific league is selected)
-            if selected_country != 'All':
-                st.header(f"📊 {selected_country} League Standings")
+    if selected_country != 'All':
+        st.header(f"📊 {selected_country} League Standings")
 
-                season_display = "All Seasons" if season_option == "All Seasons" else f"Season(s): {', '.join(map(str, selected_seasons))}"
-                st.subheader(season_display)
+        season_display = "All Seasons" if season_option == "All Seasons" else f"Season(s): {', '.join(map(str, selected_seasons))}"
+        st.subheader(season_display)
 
                 # Create standings
-                standings = create_league_standings(df_filtered, selected_country, selected_seasons if season_option == "Specific Season(s)" else None)
+        standings = create_league_standings(df_filtered, selected_country, selected_seasons if season_option == "Specific Season(s)" else None)
 
-                if len(standings) > 0:
+        if len(standings) > 0:
                     # Create tabs for different views
-                    tab1, tab2, tab3 = st.tabs(["📈 Overall Performance", "🏠 Home Performance", "✈️ Away Performance"])
+            tab1, tab2, tab3 = st.tabs(["📈 Overall Performance", "🏠 Home Performance", "✈️ Away Performance"])
 
-                    with tab1:
-                        st.markdown("### Overall Standings")
+            with tab1:
+                st.markdown("### Overall Standings")
 
                         # Prepare display dataframe
-                        overall_display = standings[['Team', 'Matches', 'Actual_Pts', 'xPTS', 'Diff', 'Avg_Actual', 'Avg_xPTS']].copy()
-                        overall_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff', 'PPG', 'xPPG']
+                overall_display = standings[['Team', 'Matches', 'Actual_Pts', 'xPTS', 'Diff', 'Avg_Actual', 'Avg_xPTS']].copy()
+                overall_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff', 'PPG', 'xPPG']
 
                         # Format numbers
-                        overall_display['xPTS'] = overall_display['xPTS'].round(1)
-                        overall_display['Diff'] = overall_display['Diff'].round(1)
-                        overall_display['PPG'] = overall_display['PPG'].round(2)
-                        overall_display['xPPG'] = overall_display['xPPG'].round(2)
+                overall_display['xPTS'] = overall_display['xPTS'].round(1)
+                overall_display['Diff'] = overall_display['Diff'].round(1)
+                overall_display['PPG'] = overall_display['PPG'].round(2)
+                overall_display['xPPG'] = overall_display['xPPG'].round(2)
 
                         # Apply styling
-                        styled_overall = overall_display.style.background_gradient(
-                            subset=['Diff'],
-                            cmap='RdYlGn',
-                            vmin=-15,
-                            vmax=15
-                        ).background_gradient(
-                            subset=['PPG'],
-                            cmap='YlGn',
-                            vmin=0,
-                            vmax=3
-                        ).format({
-                            'xPTS': '{:.1f}',
-                            'Diff': '{:+.1f}',
-                            'PPG': '{:.2f}',
-                            'xPPG': '{:.2f}'
-                        })
+                styled_overall = overall_display.style.background_gradient(
+                    subset=['Diff'],
+                    cmap='RdYlGn',
+                    vmin=-15,
+                    vmax=15
+                ).background_gradient(
+                    subset=['PPG'],
+                    cmap='YlGn',
+                    vmin=0,
+                    vmax=3
+                ).format({
+                    'xPTS': '{:.1f}',
+                    'Diff': '{:+.1f}',
+                    'PPG': '{:.2f}',
+                    'xPPG': '{:.2f}'
+                })
 
-                        st.dataframe(styled_overall, use_container_width=True, height=600)
+                st.dataframe(styled_overall, use_container_width=True, height=600)
 
                         # Statistics
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Avg Points", f"{overall_display['Pts'].mean():.1f}")
-                        with col2:
-                            st.metric("Avg xPTS", f"{overall_display['xPTS'].mean():.1f}")
-                        with col3:
-                            best_overperformer = overall_display.loc[overall_display['Diff'].idxmax()]
-                            st.metric("Best Overperformer", best_overperformer['Team'], f"+{best_overperformer['Diff']:.1f}")
-                        with col4:
-                            worst_underperformer = overall_display.loc[overall_display['Diff'].idxmin()]
-                            st.metric("Biggest Underperformer", worst_underperformer['Team'], f"{worst_underperformer['Diff']:.1f}")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Avg Points", f"{overall_display['Pts'].mean():.1f}")
+                with col2:
+                    st.metric("Avg xPTS", f"{overall_display['xPTS'].mean():.1f}")
+                with col3:
+                    best_overperformer = overall_display.loc[overall_display['Diff'].idxmax()]
+                    st.metric("Best Overperformer", best_overperformer['Team'], f"+{best_overperformer['Diff']:.1f}")
+                with col4:
+                    worst_underperformer = overall_display.loc[overall_display['Diff'].idxmin()]
+                    st.metric("Biggest Underperformer", worst_underperformer['Team'], f"{worst_underperformer['Diff']:.1f}")
 
-                    with tab2:
-                        st.markdown("### Home Performance")
+            with tab2:
+                st.markdown("### Home Performance")
 
                         # Prepare home display dataframe
-                        home_display = standings[['Team', 'Home_Matches', 'Home_Actual', 'Home_xPTS', 'Home_Diff']].copy()
-                        home_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
-                        home_display = home_display.sort_values('Pts', ascending=False).reset_index(drop=True)
-                        home_display.index = home_display.index + 1
+                home_display = standings[['Team', 'Home_Matches', 'Home_Actual', 'Home_xPTS', 'Home_Diff']].copy()
+                home_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
+                home_display = home_display.sort_values('Pts', ascending=False).reset_index(drop=True)
+                home_display.index = home_display.index + 1
 
                         # Format numbers
-                        home_display['xPTS'] = home_display['xPTS'].round(1)
-                        home_display['Diff'] = home_display['Diff'].round(1)
+                home_display['xPTS'] = home_display['xPTS'].round(1)
+                home_display['Diff'] = home_display['Diff'].round(1)
 
                         # Add averages
-                        home_display['PPG'] = (home_display['Pts'] / home_display['M']).round(2)
-                        home_display['xPPG'] = (home_display['xPTS'] / home_display['M']).round(2)
+                home_display['PPG'] = (home_display['Pts'] / home_display['M']).round(2)
+                home_display['xPPG'] = (home_display['xPTS'] / home_display['M']).round(2)
 
                         # Apply styling
-                        styled_home = home_display.style.background_gradient(
-                            subset=['Diff'],
-                            cmap='RdYlGn',
-                            vmin=-10,
-                            vmax=10
-                        ).background_gradient(
-                            subset=['PPG'],
-                            cmap='YlGn',
-                            vmin=0,
-                            vmax=3
-                        ).format({
-                            'xPTS': '{:.1f}',
-                            'Diff': '{:+.1f}',
-                            'PPG': '{:.2f}',
-                            'xPPG': '{:.2f}'
-                        })
+                styled_home = home_display.style.background_gradient(
+                    subset=['Diff'],
+                    cmap='RdYlGn',
+                    vmin=-10,
+                    vmax=10
+                ).background_gradient(
+                    subset=['PPG'],
+                    cmap='YlGn',
+                    vmin=0,
+                    vmax=3
+                ).format({
+                    'xPTS': '{:.1f}',
+                    'Diff': '{:+.1f}',
+                    'PPG': '{:.2f}',
+                    'xPPG': '{:.2f}'
+                })
 
-                        st.dataframe(styled_home, use_container_width=True, height=600)
+                st.dataframe(styled_home, use_container_width=True, height=600)
 
                         # Home statistics
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Avg Home PPG", f"{home_display['PPG'].mean():.2f}")
-                        with col2:
-                            st.metric("Avg Home xPPG", f"{home_display['xPPG'].mean():.2f}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Avg Home PPG", f"{home_display['PPG'].mean():.2f}")
+                with col2:
+                    st.metric("Avg Home xPPG", f"{home_display['xPPG'].mean():.2f}")
 
-                    with tab3:
-                        st.markdown("### Away Performance")
+            with tab3:
+                st.markdown("### Away Performance")
 
                         # Prepare away display dataframe
-                        away_display = standings[['Team', 'Away_Matches', 'Away_Actual', 'Away_xPTS', 'Away_Diff']].copy()
-                        away_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
-                        away_display = away_display.sort_values('Pts', ascending=False).reset_index(drop=True)
-                        away_display.index = away_display.index + 1
+                away_display = standings[['Team', 'Away_Matches', 'Away_Actual', 'Away_xPTS', 'Away_Diff']].copy()
+                away_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
+                away_display = away_display.sort_values('Pts', ascending=False).reset_index(drop=True)
+                away_display.index = away_display.index + 1
 
                         # Format numbers
-                        away_display['xPTS'] = away_display['xPTS'].round(1)
-                        away_display['Diff'] = away_display['Diff'].round(1)
+                away_display['xPTS'] = away_display['xPTS'].round(1)
+                away_display['Diff'] = away_display['Diff'].round(1)
 
                         # Add averages
-                        away_display['PPG'] = (away_display['Pts'] / away_display['M']).round(2)
-                        away_display['xPPG'] = (away_display['xPTS'] / away_display['M']).round(2)
+                away_display['PPG'] = (away_display['Pts'] / away_display['M']).round(2)
+                away_display['xPPG'] = (away_display['xPTS'] / away_display['M']).round(2)
 
                         # Apply styling
-                        styled_away = away_display.style.background_gradient(
-                            subset=['Diff'],
-                            cmap='RdYlGn',
-                            vmin=-10,
-                            vmax=10
-                        ).background_gradient(
-                            subset=['PPG'],
-                            cmap='YlGn',
-                            vmin=0,
-                            vmax=3
-                        ).format({
-                            'xPTS': '{:.1f}',
-                            'Diff': '{:+.1f}',
-                            'PPG': '{:.2f}',
-                            'xPPG': '{:.2f}'
-                        })
+                styled_away = away_display.style.background_gradient(
+                    subset=['Diff'],
+                    cmap='RdYlGn',
+                    vmin=-10,
+                    vmax=10
+                ).background_gradient(
+                    subset=['PPG'],
+                    cmap='YlGn',
+                    vmin=0,
+                    vmax=3
+                ).format({
+                    'xPTS': '{:.1f}',
+                    'Diff': '{:+.1f}',
+                    'PPG': '{:.2f}',
+                    'xPPG': '{:.2f}'
+                })
 
-                        st.dataframe(styled_away, use_container_width=True, height=600)
+                st.dataframe(styled_away, use_container_width=True, height=600)
 
                         # Away statistics
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Avg Away PPG", f"{away_display['PPG'].mean():.2f}")
-                        with col2:
-                            st.metric("Avg Away xPPG", f"{away_display['xPPG'].mean():.2f}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Avg Away PPG", f"{away_display['PPG'].mean():.2f}")
+                with col2:
+                    st.metric("Avg Away xPPG", f"{away_display['xPPG'].mean():.2f}")
 
-                st.markdown("---")
+        st.markdown("---")
 
             # Calculate team-specific stats if a team is selected
-            if selected_team != 'All':
-                st.subheader(f"📊 {selected_team} Statistics")
+    if selected_team != 'All':
+        st.subheader(f"📊 {selected_team} Statistics")
 
                 # Home games
-                home_games = df_filtered[df_filtered['home_team'] == selected_team]
+        home_games = df_filtered[df_filtered['home_team'] == selected_team]
                 # Away games
-                away_games = df_filtered[df_filtered['away_team'] == selected_team]
+        away_games = df_filtered[df_filtered['away_team'] == selected_team]
 
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            total_xpts = home_games['xPTS_home'].sum() + away_games['xPTS_away'].sum()
+            st.metric("Total xPTS", f"{total_xpts:.1f}")
+
+        with col2:
+            total_actual = home_games['actual_pts_home'].sum() + away_games['actual_pts_away'].sum()
+            st.metric("Total Actual Points", f"{total_actual}")
+
+        with col3:
+            avg_xpts = (home_games['xPTS_home'].mean() + away_games['xPTS_away'].mean()) / 2
+            st.metric("Avg xPTS per Game", f"{avg_xpts:.2f}")
+
+        with col4:
+            difference = total_actual - total_xpts
+            st.metric("Overperformance", f"{difference:+.1f}")
+
+                # FORM ANALYSIS SECTION
+        st.markdown("---")
+        st.header(f"📈 {selected_team} - Form Analysis & Trends")
+
+                # Calculate form data
+        team_form = calculate_team_form(df_filtered, selected_team)
+
+        if len(team_form) >= 5:
+                    # Create tabs for different form analyses
+            form_tab1, form_tab2, form_tab3, form_tab4 = st.tabs([
+                "📊 Form Charts",
+                "🔥 Recent Form",
+                "📉 Rolling Averages",
+                "📋 Match History"
+            ])
+
+            with form_tab1:
+                st.markdown("### Performance Trends")
+
+                        # Main form chart
+                form_fig = create_form_chart(team_form, selected_team)
+                st.plotly_chart(form_fig, use_container_width=True)
+
+                        # Momentum chart
+                momentum_fig = create_momentum_chart(team_form, selected_team)
+                st.plotly_chart(momentum_fig, use_container_width=True)
+
+            with form_tab2:
+                st.markdown("### Recent Form Analysis")
+
+                        # Get last 15 games
+                recent_15 = team_form.tail(15)
+
+                        # Form indicators
                 col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
-                    total_xpts = home_games['xPTS_home'].sum() + away_games['xPTS_away'].sum()
-                    st.metric("Total xPTS", f"{total_xpts:.1f}")
+                    form_5 = get_form_string(team_form, 5)
+                    st.metric("Last 5 Games", form_5)
 
                 with col2:
-                    total_actual = home_games['actual_pts_home'].sum() + away_games['actual_pts_away'].sum()
-                    st.metric("Total Actual Points", f"{total_actual}")
+                    momentum = calculate_momentum(team_form, 5)
+                    st.metric("Momentum (Last 5)", momentum)
 
                 with col3:
-                    avg_xpts = (home_games['xPTS_home'].mean() + away_games['xPTS_away'].mean()) / 2
-                    st.metric("Avg xPTS per Game", f"{avg_xpts:.2f}")
+                    recent_5_actual = recent_15.tail(5)['team_actual'].sum()
+                    st.metric("Points (Last 5)", f"{recent_5_actual}")
 
                 with col4:
-                    difference = total_actual - total_xpts
-                    st.metric("Overperformance", f"{difference:+.1f}")
+                    recent_5_xpts = recent_15.tail(5)['team_xpts'].sum()
+                    recent_5_diff = recent_5_actual - recent_5_xpts
+                    st.metric("vs xPTS (Last 5)", f"{recent_5_diff:+.1f}")
 
-                # FORM ANALYSIS SECTION
-                st.markdown("---")
-                st.header(f"📈 {selected_team} - Form Analysis & Trends")
+                        # Recent matches table
+                st.markdown("#### Last 15 Matches")
 
-                # Calculate form data
-                team_form = calculate_team_form(df_filtered, selected_team)
+                recent_display = recent_15[[
+                    'season', 'round', 'venue', 'opponent',
+                    'team_actual', 'team_xpts'
+                ]].copy()
 
-                if len(team_form) >= 5:
-                    # Create tabs for different form analyses
-                    form_tab1, form_tab2, form_tab3, form_tab4 = st.tabs([
-                        "📊 Form Charts",
-                        "🔥 Recent Form",
-                        "📉 Rolling Averages",
-                        "📋 Match History"
-                    ])
+                recent_display.columns = ['Season', 'Round', 'Venue', 'Opponent', 'Pts', 'xPTS']
+                recent_display['Diff'] = recent_display['Pts'] - recent_display['xPTS']
+                recent_display['Result'] = recent_display['Pts'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
 
-                    with form_tab1:
-                        st.markdown("### Performance Trends")
+                        # Format numbers
+                recent_display['xPTS'] = recent_display['xPTS'].round(2)
+                recent_display['Diff'] = recent_display['Diff'].round(2)
 
-                        # Main form chart
-                        form_fig = create_form_chart(team_form, selected_team)
-                        st.plotly_chart(form_fig, use_container_width=True)
+                        # Reverse order to show most recent first
+                recent_display = recent_display.iloc[::-1].reset_index(drop=True)
 
-                        # Momentum chart
-                        momentum_fig = create_momentum_chart(team_form, selected_team)
-                        st.plotly_chart(momentum_fig, use_container_width=True)
+                        # Apply styling
+                styled_recent = recent_display.style.background_gradient(
+                    subset=['Diff'],
+                    cmap='RdYlGn',
+                    vmin=-3,
+                    vmax=3
+                ).applymap(
+                    lambda x: 'background-color: #d4edda' if x == '✅ Win'
+                    else ('background-color: #fff3cd' if x == '🟡 Draw'
+                          else 'background-color: #f8d7da'),
+                    subset=['Result']
+                )
 
-                    with form_tab2:
-                        st.markdown("### Recent Form Analysis")
+                st.dataframe(styled_recent, use_container_width=True, height=400)
 
-                        # Get last 15 games
-                        recent_15 = team_form.tail(15)
+            with form_tab3:
+                st.markdown("### Rolling Performance Metrics")
 
-                        # Form indicators
+                        # Display rolling averages for different windows
+                windows = [5, 10, 15]
+
+                for window in windows:
+                    if len(team_form) >= window:
+                        st.markdown(f"#### Last {window} Games Average")
+
+                        last_n = team_form.tail(window)
+
                         col1, col2, col3, col4 = st.columns(4)
 
                         with col1:
-                            form_5 = get_form_string(team_form, 5)
-                            st.metric("Last 5 Games", form_5)
+                            avg_actual = last_n['team_actual'].mean()
+                            st.metric(f"Avg Points", f"{avg_actual:.2f}")
 
                         with col2:
-                            momentum = calculate_momentum(team_form, 5)
-                            st.metric("Momentum (Last 5)", momentum)
+                            avg_xpts = last_n['team_xpts'].mean()
+                            st.metric(f"Avg xPTS", f"{avg_xpts:.2f}")
 
                         with col3:
-                            recent_5_actual = recent_15.tail(5)['team_actual'].sum()
-                            st.metric("Points (Last 5)", f"{recent_5_actual}")
+                            diff = avg_actual - avg_xpts
+                            st.metric(f"Difference", f"{diff:+.2f}")
 
                         with col4:
-                            recent_5_xpts = recent_15.tail(5)['team_xpts'].sum()
-                            recent_5_diff = recent_5_actual - recent_5_xpts
-                            st.metric("vs xPTS (Last 5)", f"{recent_5_diff:+.1f}")
-
-                        # Recent matches table
-                        st.markdown("#### Last 15 Matches")
-
-                        recent_display = recent_15[[
-                            'season', 'round', 'venue', 'opponent',
-                            'team_actual', 'team_xpts'
-                        ]].copy()
-
-                        recent_display.columns = ['Season', 'Round', 'Venue', 'Opponent', 'Pts', 'xPTS']
-                        recent_display['Diff'] = recent_display['Pts'] - recent_display['xPTS']
-                        recent_display['Result'] = recent_display['Pts'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
-
-                        # Format numbers
-                        recent_display['xPTS'] = recent_display['xPTS'].round(2)
-                        recent_display['Diff'] = recent_display['Diff'].round(2)
-
-                        # Reverse order to show most recent first
-                        recent_display = recent_display.iloc[::-1].reset_index(drop=True)
-
-                        # Apply styling
-                        styled_recent = recent_display.style.background_gradient(
-                            subset=['Diff'],
-                            cmap='RdYlGn',
-                            vmin=-3,
-                            vmax=3
-                        ).applymap(
-                            lambda x: 'background-color: #d4edda' if x == '✅ Win'
-                            else ('background-color: #fff3cd' if x == '🟡 Draw'
-                                  else 'background-color: #f8d7da'),
-                            subset=['Result']
-                        )
-
-                        st.dataframe(styled_recent, use_container_width=True, height=400)
-
-                    with form_tab3:
-                        st.markdown("### Rolling Performance Metrics")
-
-                        # Display rolling averages for different windows
-                        windows = [5, 10, 15]
-
-                        for window in windows:
-                            if len(team_form) >= window:
-                                st.markdown(f"#### Last {window} Games Average")
-
-                                last_n = team_form.tail(window)
-
-                                col1, col2, col3, col4 = st.columns(4)
-
-                                with col1:
-                                    avg_actual = last_n['team_actual'].mean()
-                                    st.metric(f"Avg Points", f"{avg_actual:.2f}")
-
-                                with col2:
-                                    avg_xpts = last_n['team_xpts'].mean()
-                                    st.metric(f"Avg xPTS", f"{avg_xpts:.2f}")
-
-                                with col3:
-                                    diff = avg_actual - avg_xpts
-                                    st.metric(f"Difference", f"{diff:+.2f}")
-
-                                with col4:
-                                    wins = (last_n['team_actual'] == 3).sum()
-                                    win_rate = (wins / window) * 100
-                                    st.metric(f"Win Rate", f"{win_rate:.0f}%")
+                            wins = (last_n['team_actual'] == 3).sum()
+                            win_rate = (wins / window) * 100
+                            st.metric(f"Win Rate", f"{win_rate:.0f}%")
 
                         # Trend comparison chart
-                        st.markdown("#### Form Comparison Across Windows")
+                st.markdown("#### Form Comparison Across Windows")
 
-                        trend_fig = go.Figure()
+                trend_fig = go.Figure()
 
-                        for window in [5, 10, 15]:
-                            trend_fig.add_trace(go.Scatter(
-                                x=list(range(1, len(team_form) + 1)),
-                                y=team_form[f'rolling_actual_{window}'],
-                                mode='lines',
-                                name=f'{window}-game avg (Actual)',
-                                line=dict(width=2)
-                            ))
+                for window in [5, 10, 15]:
+                    trend_fig.add_trace(go.Scatter(
+                        x=list(range(1, len(team_form) + 1)),
+                        y=team_form[f'rolling_actual_{window}'],
+                        mode='lines',
+                        name=f'{window}-game avg (Actual)',
+                        line=dict(width=2)
+                    ))
 
-                        trend_fig.update_layout(
-                            title="Rolling Average Comparison (Actual Points)",
-                            xaxis_title="Match Number",
-                            yaxis_title="Points Per Game",
-                            height=400,
-                            template='plotly_white',
-                            hovermode='x unified'
-                        )
+                trend_fig.update_layout(
+                    title="Rolling Average Comparison (Actual Points)",
+                    xaxis_title="Match Number",
+                    yaxis_title="Points Per Game",
+                    height=400,
+                    template='plotly_white',
+                    hovermode='x unified'
+                )
 
-                        st.plotly_chart(trend_fig, use_container_width=True)
+                st.plotly_chart(trend_fig, use_container_width=True)
 
-                    with form_tab4:
-                        st.markdown("### Complete Match History")
+            with form_tab4:
+                st.markdown("### Complete Match History")
 
                         # Full match history
-                        history_display = team_form[[
-                            'season', 'round', 'venue', 'opponent',
-                            'team_actual', 'team_xpts',
-                            'rolling_actual_10', 'rolling_xpts_10'
-                        ]].copy()
+                history_display = team_form[[
+                    'season', 'round', 'venue', 'opponent',
+                    'team_actual', 'team_xpts',
+                    'rolling_actual_10', 'rolling_xpts_10'
+                ]].copy()
 
-                        history_display.columns = [
-                            'Season', 'Round', 'Venue', 'Opponent',
-                            'Pts', 'xPTS', '10G Avg (Pts)', '10G Avg (xPTS)'
-                        ]
+                history_display.columns = [
+                    'Season', 'Round', 'Venue', 'Opponent',
+                    'Pts', 'xPTS', '10G Avg (Pts)', '10G Avg (xPTS)'
+                ]
 
-                        history_display['Diff'] = history_display['Pts'] - history_display['xPTS']
-                        history_display['Form Diff'] = history_display['10G Avg (Pts)'] - history_display['10G Avg (xPTS)']
+                history_display['Diff'] = history_display['Pts'] - history_display['xPTS']
+                history_display['Form Diff'] = history_display['10G Avg (Pts)'] - history_display['10G Avg (xPTS)']
 
                         # Format numbers
-                        for col in ['xPTS', '10G Avg (Pts)', '10G Avg (xPTS)', 'Diff', 'Form Diff']:
-                            history_display[col] = history_display[col].round(2)
+                for col in ['xPTS', '10G Avg (Pts)', '10G Avg (xPTS)', 'Diff', 'Form Diff']:
+                    history_display[col] = history_display[col].round(2)
 
                         # Reverse to show most recent first
-                        history_display = history_display.iloc[::-1].reset_index(drop=True)
+                history_display = history_display.iloc[::-1].reset_index(drop=True)
 
-                        st.dataframe(history_display, use_container_width=True, height=500)
+                st.dataframe(history_display, use_container_width=True, height=500)
 
                         # Download button for match history
-                        csv_history = history_display.to_csv(index=False)
-                        st.download_button(
-                            label=f"Download {selected_team} Match History (CSV)",
-                            data=csv_history,
-                            file_name=f"{selected_team}_match_history.csv",
-                            mime="text/csv"
-                        )
+                csv_history = history_display.to_csv(index=False)
+                st.download_button(
+                    label=f"Download {selected_team} Match History (CSV)",
+                    data=csv_history,
+                    file_name=f"{selected_team}_match_history.csv",
+                    mime="text/csv"
+                )
 
-                else:
-                    st.info(f"Need at least 5 matches for form analysis. {selected_team} has {len(team_form)} match(es) in selected period.")
+        else:
+            st.info(f"Need at least 5 matches for form analysis. {selected_team} has {len(team_form)} match(es) in selected period.")
 
                 # GOAL SCORING PATTERNS SECTION
-                st.markdown("---")
-                st.header(f"⚽ {selected_team} - Goal Scoring Patterns")
+        st.markdown("---")
+        st.header(f"⚽ {selected_team} - Goal Scoring Patterns")
 
-                home_goal_stats, away_goal_stats, overall_goal_stats = calculate_goal_statistics(df_filtered, selected_team)
+        home_goal_stats, away_goal_stats, overall_goal_stats = calculate_goal_statistics(df_filtered, selected_team)
 
-                goal_tab1, goal_tab2, goal_tab3 = st.tabs(["📊 Overall Stats", "🏠 Home Stats", "✈️ Away Stats"])
+        goal_tab1, goal_tab2, goal_tab3 = st.tabs(["📊 Overall Stats", "🏠 Home Stats", "✈️ Away Stats"])
 
-                with goal_tab1:
-                    st.markdown("### Overall Goal Statistics")
+        with goal_tab1:
+            st.markdown("### Overall Goal Statistics")
 
-                    col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4 = st.columns(4)
 
-                    with col1:
-                        gpg = overall_goal_stats['goals_scored'] / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("Goals Per Game", f"{gpg:.2f}")
-                        st.caption(f"Total: {overall_goal_stats['goals_scored']}")
+            with col1:
+                gpg = overall_goal_stats['goals_scored'] / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
+                st.metric("Goals Per Game", f"{gpg:.2f}")
+                st.caption(f"Total: {overall_goal_stats['goals_scored']}")
 
-                    with col2:
-                        gcpg = overall_goal_stats['goals_conceded'] / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("Conceded Per Game", f"{gcpg:.2f}")
-                        st.caption(f"Total: {overall_goal_stats['goals_conceded']}")
+            with col2:
+                gcpg = overall_goal_stats['goals_conceded'] / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
+                st.metric("Conceded Per Game", f"{gcpg:.2f}")
+                st.caption(f"Total: {overall_goal_stats['goals_conceded']}")
 
-                    with col3:
-                        goal_diff = overall_goal_stats['goals_scored'] - overall_goal_stats['goals_conceded']
-                        st.metric("Goal Difference", f"{goal_diff:+d}")
+            with col3:
+                goal_diff = overall_goal_stats['goals_scored'] - overall_goal_stats['goals_conceded']
+                st.metric("Goal Difference", f"{goal_diff:+d}")
 
-                    with col4:
-                        gd_per_game = goal_diff / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("GD Per Game", f"{gd_per_game:+.2f}")
+            with col4:
+                gd_per_game = goal_diff / overall_goal_stats['matches'] if overall_goal_stats['matches'] > 0 else 0
+                st.metric("GD Per Game", f"{gd_per_game:+.2f}")
 
-                    st.markdown("### Betting Patterns")
+            st.markdown("### Betting Patterns")
 
-                    col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4 = st.columns(4)
 
-                    with col1:
-                        cs_rate = (overall_goal_stats['clean_sheets'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("Clean Sheets", f"{cs_rate:.0f}%")
-                        st.caption(f"{overall_goal_stats['clean_sheets']} of {overall_goal_stats['matches']}")
+            with col1:
+                cs_rate = (overall_goal_stats['clean_sheets'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
+                st.metric("Clean Sheets", f"{cs_rate:.0f}%")
+                st.caption(f"{overall_goal_stats['clean_sheets']} of {overall_goal_stats['matches']}")
 
-                    with col2:
-                        btts_rate = (overall_goal_stats['btts'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("BTTS Rate", f"{btts_rate:.0f}%")
-                        st.caption(f"{overall_goal_stats['btts']} of {overall_goal_stats['matches']}")
+            with col2:
+                btts_rate = (overall_goal_stats['btts'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
+                st.metric("BTTS Rate", f"{btts_rate:.0f}%")
+                st.caption(f"{overall_goal_stats['btts']} of {overall_goal_stats['matches']}")
 
-                    with col3:
-                        over_25_rate = (overall_goal_stats['over_2_5'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("Over 2.5 Goals", f"{over_25_rate:.0f}%")
-                        st.caption(f"{overall_goal_stats['over_2_5']} of {overall_goal_stats['matches']}")
+            with col3:
+                over_25_rate = (overall_goal_stats['over_2_5'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
+                st.metric("Over 2.5 Goals", f"{over_25_rate:.0f}%")
+                st.caption(f"{overall_goal_stats['over_2_5']} of {overall_goal_stats['matches']}")
 
-                    with col4:
-                        fts_rate = (overall_goal_stats['failed_to_score'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
-                        st.metric("Failed to Score", f"{fts_rate:.0f}%")
-                        st.caption(f"{overall_goal_stats['failed_to_score']} of {overall_goal_stats['matches']}")
+            with col4:
+                fts_rate = (overall_goal_stats['failed_to_score'] / overall_goal_stats['matches'] * 100) if overall_goal_stats['matches'] > 0 else 0
+                st.metric("Failed to Score", f"{fts_rate:.0f}%")
+                st.caption(f"{overall_goal_stats['failed_to_score']} of {overall_goal_stats['matches']}")
 
-                with goal_tab2:
-                    st.markdown("### Home Goal Statistics")
+        with goal_tab2:
+            st.markdown("### Home Goal Statistics")
 
-                    col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4 = st.columns(4)
 
-                    with col1:
-                        home_gpg = home_goal_stats['goals_scored'] / home_goal_stats['matches'] if home_goal_stats['matches'] > 0 else 0
-                        st.metric("Home Goals/Game", f"{home_gpg:.2f}")
+            with col1:
+                home_gpg = home_goal_stats['goals_scored'] / home_goal_stats['matches'] if home_goal_stats['matches'] > 0 else 0
+                st.metric("Home Goals/Game", f"{home_gpg:.2f}")
 
-                    with col2:
-                        home_gcpg = home_goal_stats['goals_conceded'] / home_goal_stats['matches'] if home_goal_stats['matches'] > 0 else 0
-                        st.metric("Home Conceded/Game", f"{home_gcpg:.2f}")
+            with col2:
+                home_gcpg = home_goal_stats['goals_conceded'] / home_goal_stats['matches'] if home_goal_stats['matches'] > 0 else 0
+                st.metric("Home Conceded/Game", f"{home_gcpg:.2f}")
 
-                    with col3:
-                        home_cs_rate = (home_goal_stats['clean_sheets'] / home_goal_stats['matches'] * 100) if home_goal_stats['matches'] > 0 else 0
-                        st.metric("Home Clean Sheets", f"{home_cs_rate:.0f}%")
+            with col3:
+                home_cs_rate = (home_goal_stats['clean_sheets'] / home_goal_stats['matches'] * 100) if home_goal_stats['matches'] > 0 else 0
+                st.metric("Home Clean Sheets", f"{home_cs_rate:.0f}%")
 
-                    with col4:
-                        home_btts_rate = (home_goal_stats['btts'] / home_goal_stats['matches'] * 100) if home_goal_stats['matches'] > 0 else 0
-                        st.metric("Home BTTS Rate", f"{home_btts_rate:.0f}%")
+            with col4:
+                home_btts_rate = (home_goal_stats['btts'] / home_goal_stats['matches'] * 100) if home_goal_stats['matches'] > 0 else 0
+                st.metric("Home BTTS Rate", f"{home_btts_rate:.0f}%")
 
-                with goal_tab3:
-                    st.markdown("### Away Goal Statistics")
+        with goal_tab3:
+            st.markdown("### Away Goal Statistics")
 
-                    col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4 = st.columns(4)
 
-                    with col1:
-                        away_gpg = away_goal_stats['goals_scored'] / away_goal_stats['matches'] if away_goal_stats['matches'] > 0 else 0
-                        st.metric("Away Goals/Game", f"{away_gpg:.2f}")
+            with col1:
+                away_gpg = away_goal_stats['goals_scored'] / away_goal_stats['matches'] if away_goal_stats['matches'] > 0 else 0
+                st.metric("Away Goals/Game", f"{away_gpg:.2f}")
 
-                    with col2:
-                        away_gcpg = away_goal_stats['goals_conceded'] / away_goal_stats['matches'] if away_goal_stats['matches'] > 0 else 0
-                        st.metric("Away Conceded/Game", f"{away_gcpg:.2f}")
+            with col2:
+                away_gcpg = away_goal_stats['goals_conceded'] / away_goal_stats['matches'] if away_goal_stats['matches'] > 0 else 0
+                st.metric("Away Conceded/Game", f"{away_gcpg:.2f}")
 
-                    with col3:
-                        away_cs_rate = (away_goal_stats['clean_sheets'] / away_goal_stats['matches'] * 100) if away_goal_stats['matches'] > 0 else 0
-                        st.metric("Away Clean Sheets", f"{away_cs_rate:.0f}%")
+            with col3:
+                away_cs_rate = (away_goal_stats['clean_sheets'] / away_goal_stats['matches'] * 100) if away_goal_stats['matches'] > 0 else 0
+                st.metric("Away Clean Sheets", f"{away_cs_rate:.0f}%")
 
-                    with col4:
-                        away_btts_rate = (away_goal_stats['btts'] / away_goal_stats['matches'] * 100) if away_goal_stats['matches'] > 0 else 0
-                        st.metric("Away BTTS Rate", f"{away_btts_rate:.0f}%")
+            with col4:
+                away_btts_rate = (away_goal_stats['btts'] / away_goal_stats['matches'] * 100) if away_goal_stats['matches'] > 0 else 0
+                st.metric("Away BTTS Rate", f"{away_btts_rate:.0f}%")
 
                 # VARIANCE & CONSISTENCY ANALYSIS
-                st.markdown("---")
-                st.header(f"📉 {selected_team} - Variance & Consistency Analysis")
+        st.markdown("---")
+        st.header(f"📉 {selected_team} - Variance & Consistency Analysis")
 
-                if len(team_form) >= 5:
-                    variance_metrics = calculate_variance_metrics(team_form)
+        if len(team_form) >= 5:
+            variance_metrics = calculate_variance_metrics(team_form)
 
-                    if variance_metrics:
-                        var_tab1, var_tab2 = st.tabs(["📊 Consistency Metrics", "📈 Distribution Analysis"])
+            if variance_metrics:
+                var_tab1, var_tab2 = st.tabs(["📊 Consistency Metrics", "📈 Distribution Analysis"])
 
-                        with var_tab1:
-                            st.markdown("### Performance Consistency")
+                with var_tab1:
+                    st.markdown("### Performance Consistency")
 
-                            col1, col2, col3 = st.columns(3)
+                    col1, col2, col3 = st.columns(3)
 
-                            with col1:
-                                st.metric("Consistency Score", f"{variance_metrics['consistency_score']:.3f}")
-                                st.caption("Lower = More consistent")
+                    with col1:
+                        st.metric("Consistency Score", f"{variance_metrics['consistency_score']:.3f}")
+                        st.caption("Lower = More consistent")
 
-                            with col2:
-                                st.metric("xPTS Volatility (CV)", f"{variance_metrics['xpts_cv']:.3f}")
-                                st.caption("Coefficient of variation")
+                    with col2:
+                        st.metric("xPTS Volatility (CV)", f"{variance_metrics['xpts_cv']:.3f}")
+                        st.caption("Coefficient of variation")
 
-                            with col3:
-                                st.metric("Regression Indicator", "")
-                                st.info(variance_metrics['regression_indicator'])
+                    with col3:
+                        st.metric("Regression Indicator", "")
+                        st.info(variance_metrics['regression_indicator'])
 
-                            st.markdown("### Performance Variance")
+                    st.markdown("### Performance Variance")
 
-                            col1, col2, col3 = st.columns(3)
+                    col1, col2, col3 = st.columns(3)
 
-                            with col1:
-                                st.metric("Avg Performance vs xPTS", f"{variance_metrics['diff_mean']:+.3f}")
-                                st.caption("Points per game difference")
+                    with col1:
+                        st.metric("Avg Performance vs xPTS", f"{variance_metrics['diff_mean']:+.3f}")
+                        st.caption("Points per game difference")
 
-                            with col2:
-                                st.metric("Performance Std Dev", f"{variance_metrics['diff_std']:.3f}")
-                                st.caption("How much results vary")
+                    with col2:
+                        st.metric("Performance Std Dev", f"{variance_metrics['diff_std']:.3f}")
+                        st.caption("How much results vary")
 
-                            with col3:
-                                st.metric("xPTS Std Dev", f"{variance_metrics['xpts_std']:.3f}")
-                                st.caption("Expected performance variance")
+                    with col3:
+                        st.metric("xPTS Std Dev", f"{variance_metrics['xpts_std']:.3f}")
+                        st.caption("Expected performance variance")
 
-                        with var_tab2:
-                            st.markdown("### Result Distribution")
+                with var_tab2:
+                    st.markdown("### Result Distribution")
 
-                            col1, col2, col3 = st.columns(3)
+                    col1, col2, col3 = st.columns(3)
 
-                            with col1:
-                                st.metric("Win Rate", f"{variance_metrics['win_rate']:.1%}")
+                    with col1:
+                        st.metric("Win Rate", f"{variance_metrics['win_rate']:.1%}")
 
-                            with col2:
-                                st.metric("Draw Rate", f"{variance_metrics['draw_rate']:.1%}")
+                    with col2:
+                        st.metric("Draw Rate", f"{variance_metrics['draw_rate']:.1%}")
 
-                            with col3:
-                                st.metric("Loss Rate", f"{variance_metrics['loss_rate']:.1%}")
+                    with col3:
+                        st.metric("Loss Rate", f"{variance_metrics['loss_rate']:.1%}")
 
                             # Distribution chart
-                            fig = go.Figure()
+                    fig = go.Figure()
 
-                            result_counts = [
-                                variance_metrics['win_rate'] * 100,
-                                variance_metrics['draw_rate'] * 100,
-                                variance_metrics['loss_rate'] * 100
-                            ]
+                    result_counts = [
+                        variance_metrics['win_rate'] * 100,
+                        variance_metrics['draw_rate'] * 100,
+                        variance_metrics['loss_rate'] * 100
+                    ]
 
-                            fig.add_trace(go.Bar(
-                                x=['Wins', 'Draws', 'Losses'],
-                                y=result_counts,
-                                marker_color=['green', 'orange', 'red'],
-                                text=[f"{val:.1f}%" for val in result_counts],
-                                textposition='auto',
-                            ))
+                    fig.add_trace(go.Bar(
+                        x=['Wins', 'Draws', 'Losses'],
+                        y=result_counts,
+                        marker_color=['green', 'orange', 'red'],
+                        text=[f"{val:.1f}%" for val in result_counts],
+                        textposition='auto',
+                    ))
 
-                            fig.update_layout(
-                                title="Result Distribution",
-                                yaxis_title="Percentage",
-                                height=400,
-                                template='plotly_white'
-                            )
+                    fig.update_layout(
+                        title="Result Distribution",
+                        yaxis_title="Percentage",
+                        height=400,
+                        template='plotly_white'
+                    )
 
-                            st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
 
                             # Variance explanation
-                            st.markdown("### What Does This Mean?")
+                    st.markdown("### What Does This Mean?")
 
-                            if variance_metrics['consistency_score'] < 1.0:
-                                consistency_msg = "🟢 **Very Consistent** - Results closely match expectations"
-                            elif variance_metrics['consistency_score'] < 1.5:
-                                consistency_msg = "🟡 **Moderately Consistent** - Some variance but predictable"
-                            else:
-                                consistency_msg = "🔴 **Inconsistent** - High variance, less predictable"
+                    if variance_metrics['consistency_score'] < 1.0:
+                        consistency_msg = "🟢 **Very Consistent** - Results closely match expectations"
+                    elif variance_metrics['consistency_score'] < 1.5:
+                        consistency_msg = "🟡 **Moderately Consistent** - Some variance but predictable"
+                    else:
+                        consistency_msg = "🔴 **Inconsistent** - High variance, less predictable"
 
-                            st.info(consistency_msg)
+                    st.info(consistency_msg)
 
                 # STRENGTH OF SCHEDULE ANALYSIS
-                if selected_country != 'All':
-                    st.markdown("---")
-                    st.header(f"💪 {selected_team} - Strength of Schedule")
+        if selected_country != 'All':
+            st.markdown("---")
+            st.header(f"💪 {selected_team} - Strength of Schedule")
 
                     # Calculate opponent strength for the league
-                    opponent_strength = calculate_opponent_strength(df_filtered, selected_country)
-                    sos_stats = calculate_schedule_difficulty(df_filtered, selected_team, opponent_strength)
+            opponent_strength = calculate_opponent_strength(df_filtered, selected_country)
+            sos_stats = calculate_schedule_difficulty(df_filtered, selected_team, opponent_strength)
 
-                    sos_tab1, sos_tab2, sos_tab3 = st.tabs(["📊 Schedule Difficulty", "🏆 Quality of Results", "📋 Opponent Breakdown"])
+            sos_tab1, sos_tab2, sos_tab3 = st.tabs(["📊 Schedule Difficulty", "🏆 Quality of Results", "📋 Opponent Breakdown"])
 
-                    with sos_tab1:
-                        st.markdown("### Overall Schedule Strength")
+            with sos_tab1:
+                st.markdown("### Overall Schedule Strength")
 
-                        col1, col2, col3 = st.columns(3)
+                col1, col2, col3 = st.columns(3)
 
-                        with col1:
-                            st.metric("Avg Opponent Strength", f"{sos_stats['avg_opponent_strength']:.3f} xPTS")
-                            st.caption("Overall difficulty rating")
+                with col1:
+                    st.metric("Avg Opponent Strength", f"{sos_stats['avg_opponent_strength']:.3f} xPTS")
+                    st.caption("Overall difficulty rating")
 
-                        with col2:
-                            st.metric("Home Schedule Difficulty", f"{sos_stats['home_opponent_avg']:.3f} xPTS")
+                with col2:
+                    st.metric("Home Schedule Difficulty", f"{sos_stats['home_opponent_avg']:.3f} xPTS")
 
-                        with col3:
-                            st.metric("Away Schedule Difficulty", f"{sos_stats['away_opponent_avg']:.3f} xPTS")
+                with col3:
+                    st.metric("Away Schedule Difficulty", f"{sos_stats['away_opponent_avg']:.3f} xPTS")
 
                         # Difficulty interpretation
-                        league_avg = np.mean([v['avg_xpts'] for v in opponent_strength.values()])
+                league_avg = np.mean([v['avg_xpts'] for v in opponent_strength.values()])
 
-                        if sos_stats['avg_opponent_strength'] > league_avg + 0.15:
-                            difficulty = "🔴 **Very Difficult Schedule** - Faced strong opponents"
-                        elif sos_stats['avg_opponent_strength'] > league_avg:
-                            difficulty = "🟡 **Above Average Difficulty** - Slightly tougher schedule"
-                        elif sos_stats['avg_opponent_strength'] < league_avg - 0.15:
-                            difficulty = "🟢 **Easy Schedule** - Faced weaker opponents"
-                        else:
-                            difficulty = "⚪ **Average Difficulty** - Typical schedule"
+                if sos_stats['avg_opponent_strength'] > league_avg + 0.15:
+                    difficulty = "🔴 **Very Difficult Schedule** - Faced strong opponents"
+                elif sos_stats['avg_opponent_strength'] > league_avg:
+                    difficulty = "🟡 **Above Average Difficulty** - Slightly tougher schedule"
+                elif sos_stats['avg_opponent_strength'] < league_avg - 0.15:
+                    difficulty = "🟢 **Easy Schedule** - Faced weaker opponents"
+                else:
+                    difficulty = "⚪ **Average Difficulty** - Typical schedule"
 
-                        st.info(difficulty)
+                st.info(difficulty)
 
-                    with sos_tab2:
-                        st.markdown("### Quality of Wins and Losses")
+            with sos_tab2:
+                st.markdown("### Quality of Wins and Losses")
 
-                        col1, col2 = st.columns(2)
+                col1, col2 = st.columns(2)
 
-                        with col1:
-                            st.metric("Avg Strength Beaten", f"{sos_stats['avg_strength_beaten']:.3f} xPTS")
-                            st.metric("Best Win Quality", f"{sos_stats['best_win_strength']:.3f} xPTS")
+                with col1:
+                    st.metric("Avg Strength Beaten", f"{sos_stats['avg_strength_beaten']:.3f} xPTS")
+                    st.metric("Best Win Quality", f"{sos_stats['best_win_strength']:.3f} xPTS")
 
-                        with col2:
-                            st.metric("Avg Strength Lost To", f"{sos_stats['avg_strength_lost_to']:.3f} xPTS")
-                            st.metric("Worst Loss Quality", f"{sos_stats['worst_loss_strength']:.3f} xPTS")
+                with col2:
+                    st.metric("Avg Strength Lost To", f"{sos_stats['avg_strength_lost_to']:.3f} xPTS")
+                    st.metric("Worst Loss Quality", f"{sos_stats['worst_loss_strength']:.3f} xPTS")
 
-                    with sos_tab3:
-                        st.markdown("### Hardest Opponents Faced")
+            with sos_tab3:
+                st.markdown("### Hardest Opponents Faced")
 
-                        hardest_df = pd.DataFrame(sos_stats['hardest_opponents'])
-                        if len(hardest_df) > 0:
-                            hardest_df['opponent_strength'] = hardest_df['opponent_strength'].round(3)
-                            hardest_df['result_display'] = hardest_df['result'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
-                            hardest_df = hardest_df[['opponent', 'venue', 'opponent_strength', 'result_display']]
-                            hardest_df.columns = ['Opponent', 'Venue', 'Strength (xPTS)', 'Result']
-                            st.dataframe(hardest_df, use_container_width=True, hide_index=True)
+                hardest_df = pd.DataFrame(sos_stats['hardest_opponents'])
+                if len(hardest_df) > 0:
+                    hardest_df['opponent_strength'] = hardest_df['opponent_strength'].round(3)
+                    hardest_df['result_display'] = hardest_df['result'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
+                    hardest_df = hardest_df[['opponent', 'venue', 'opponent_strength', 'result_display']]
+                    hardest_df.columns = ['Opponent', 'Venue', 'Strength (xPTS)', 'Result']
+                    st.dataframe(hardest_df, use_container_width=True, hide_index=True)
 
-                        st.markdown("### Easiest Opponents Faced")
+                st.markdown("### Easiest Opponents Faced")
 
-                        easiest_df = pd.DataFrame(sos_stats['easiest_opponents'])
-                        if len(easiest_df) > 0:
-                            easiest_df['opponent_strength'] = easiest_df['opponent_strength'].round(3)
-                            easiest_df['result_display'] = easiest_df['result'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
-                            easiest_df = easiest_df[['opponent', 'venue', 'opponent_strength', 'result_display']]
-                            easiest_df.columns = ['Opponent', 'Venue', 'Strength (xPTS)', 'Result']
-                            st.dataframe(easiest_df, use_container_width=True, hide_index=True)
+                easiest_df = pd.DataFrame(sos_stats['easiest_opponents'])
+                if len(easiest_df) > 0:
+                    easiest_df['opponent_strength'] = easiest_df['opponent_strength'].round(3)
+                    easiest_df['result_display'] = easiest_df['result'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
+                    easiest_df = easiest_df[['opponent', 'venue', 'opponent_strength', 'result_display']]
+                    easiest_df.columns = ['Opponent', 'Venue', 'Strength (xPTS)', 'Result']
+                    st.dataframe(easiest_df, use_container_width=True, hide_index=True)
 
             # Display filtered data
-            df_filtered_display = df_filtered[display_columns].copy()
+    df_filtered_display = df_filtered[display_columns].copy()
 
-            for col in prob_cols:
-                df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.1%}")
+    for col in prob_cols:
+        df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.1%}")
 
-            for col in xpts_cols:
-                df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.2f}")
+    for col in xpts_cols:
+        df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.2f}")
 
-            st.dataframe(df_filtered_display, use_container_width=True, height=400)
-        else:
-            st.warning("No data matches the selected filters")
+    st.dataframe(df_filtered_display, use_container_width=True, height=400)
+else:
+    st.warning("No data matches the selected filters")
 
         # Download processed data
-        st.header("💾 Download Processed Data")
+st.header("💾 Download Processed Data")
 
         # Prepare download
-        csv = df_processed.to_csv(index=False)
-        st.download_button(
-            label="Download Complete Dataset (CSV)",
-            data=csv,
-            file_name="xpts_processed_data.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+csv = df_processed.to_csv(index=False)
+st.download_button(
+    label="Download Complete Dataset (CSV)",
+    data=csv,
+    file_name="xpts_processed_data.csv",
+    mime="text/csv",
+    use_container_width=True
+)
 
         # Explanation section
-        with st.expander("ℹ️ How xPTS is Calculated"):
-            st.markdown("""
+with st.expander("ℹ️ How xPTS is Calculated"):
+    st.markdown("""
             ### Expected Points (xPTS) Calculation
             
-            **Step 1: Calculate Implied Probabilities**
-            - Home Win: 1 / Home Odds
-            - Draw: 1 / Draw Odds
-            - Away Win: 1 / Away Odds
+    **Step 1: Calculate Implied Probabilities**
+    - Home Win: 1 / Home Odds
+    - Draw: 1 / Draw Odds
+    - Away Win: 1 / Away Odds
             
-            **Step 2: Remove Bookmaker's Margin**
-            - Total = P(Home) + P(Draw) + P(Away)
-            - Margin = Total - 1
-            - True Probabilities = Implied Probability / Total
+    **Step 2: Remove Bookmaker's Margin**
+    - Total = P(Home) + P(Draw) + P(Away)
+    - Margin = Total - 1
+    - True Probabilities = Implied Probability / Total
             
-            **Step 3: Calculate xPTS**
-            - xPTS Home = 3 × P(Home Win) + 1 × P(Draw)
-            - xPTS Away = 3 × P(Away Win) + 1 × P(Draw)
+    **Step 3: Calculate xPTS**
+    - xPTS Home = 3 × P(Home Win) + 1 × P(Draw)
+    - xPTS Away = 3 × P(Away Win) + 1 × P(Draw)
             
             ### Column Definitions
-            - **cotaa**: Home win odds (decimal)
-            - **cotae**: Draw odds (decimal)
-            - **cotad**: Away win odds (decimal)
-            - **xPTS**: Expected points based on true probabilities
-            - **Margin**: Bookmaker's overround (profit margin)
-            """)
+    - **cotaa**: Home win odds (decimal)
+    - **cotae**: Draw odds (decimal)
+    - **cotad**: Away win odds (decimal)
+    - **xPTS**: Expected points based on true probabilities
+    - **Margin**: Bookmaker's overround (profit margin)
+    """)
 
     st.markdown("""
     ### Expected File Format
