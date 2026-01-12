@@ -14,6 +14,32 @@ This application:
 
 ## ✨ New Features
 
+### Form Analysis & Trends 🔥
+Advanced performance tracking and momentum indicators:
+
+- **Rolling xPTS Analysis**
+  - 5-game, 10-game, and 15-game rolling averages
+  - Actual points vs expected points trends
+  - Performance vs expectation over time
+
+- **Interactive Form Charts**
+  - Time-series visualization of team performance
+  - Rolling averages with individual match results
+  - Momentum charts showing over/underperformance
+
+- **Momentum Indicators**
+  - 🔥 Hot Streak (consistently outperforming)
+  - 📈 Good Form (performing above expectations)
+  - ➡️ Average (meeting expectations)
+  - 📉 Poor Form (underperforming)
+  - ❄️ Cold Streak (consistently underperforming)
+
+- **Recent Form Tables**
+  - Last 5, 10, 15 matches with color-coded results
+  - Win/Draw/Loss streaks
+  - Points and xPTS comparison
+  - Match-by-match performance breakdown
+
 ### League Standings Tables
 When you select a specific league, the app automatically generates:
 
@@ -118,11 +144,14 @@ Then open your browser to `http://localhost:8501`
 
 ## 📈 Use Cases
 
-1. **League Performance Analysis** - Identify teams over/underperforming their expected points
-2. **Team Comparison** - Compare home vs away performance across seasons
-3. **Betting Value** - Find matches where bookmaker odds diverge from true probabilities
-4. **Multi-Season Trends** - Track team performance evolution across multiple seasons
-5. **Home/Away Splits** - Analyze venue-specific performance patterns
+1. **Form-Based Betting** - Identify teams on hot/cold streaks for informed betting
+2. **Performance Trends** - Track team momentum across different time windows
+3. **League Performance Analysis** - Identify teams over/underperforming their expected points
+4. **Team Comparison** - Compare home vs away performance across seasons
+5. **Value Detection** - Find matches where bookmaker odds diverge from form-adjusted expectations
+6. **Multi-Season Trends** - Track team performance evolution and consistency
+7. **Regression Analysis** - Identify teams likely to regress to the mean
+8. **Streak Identification** - Find teams in hot/cold streaks for strategic betting
 
 ## 📊 Sample League Standings Output
 
@@ -144,6 +173,25 @@ BIGGEST OVERPERFORMERS:
 BIGGEST UNDERPERFORMERS:
 - Chelsea: -21.0 points below xPTS
 - Leeds: -11.9 points below xPTS
+```
+
+## 📈 Sample Form Analysis Output
+
+```
+Arsenal - Form Analysis
+
+CURRENT MOMENTUM: 🔥 Hot Streak
+Last 5 Games: W W W W W
+Performance vs xPTS: +0.64 PPG
+
+ROLLING AVERAGES:
+Last 5:  15 pts (3.00 PPG) vs 11.8 xPTS (2.36 PPG) → +3.2 overperformance
+Last 10: 25 pts (2.50 PPG) vs 22.4 xPTS (2.24 PPG) → +2.6 overperformance
+Last 15: 40 pts (2.67 PPG) vs 34.3 xPTS (2.29 PPG) → +5.7 overperformance
+
+SEASON COMPARISON:
+Season 23: 84 pts (2.21 PPG) vs 73.6 xPTS → +10.4 overperformance
+Season 24: 89 pts (2.34 PPG) vs 81.5 xPTS → +7.5 overperformance
 ```
 
 ## 🧪 Validation Results
@@ -177,6 +225,7 @@ Expected Points:
 - **Streamlit** - Web application framework
 - **Pandas** - Data processing and analysis
 - **NumPy** - Numerical computations
+- **Plotly** - Interactive charts and visualizations
 - **Matplotlib** - Color gradients and styling
 - **OpenPyXL** - Excel file handling
 
@@ -187,6 +236,17 @@ Expected Points:
 - Green gradients for overperformers
 - Red gradients for underperformers
 - PPG (Points Per Game) highlighting
+- Interactive Plotly charts
+- Time-series trend visualization
+- Performance momentum indicators
+
+### Form Analysis Tools
+- Rolling averages (5, 10, 15 games)
+- Match-by-match performance tracking
+- Streak identification (W/D/L patterns)
+- Momentum classification
+- Season-by-season comparison
+- Downloadable match history
 
 ### Flexible Filtering
 - League/country selection
