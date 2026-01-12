@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 st.set_page_config(page_title="xPTS Calculator", page_icon="⚽", layout="wide")
 
@@ -30,6 +32,88 @@ def remove_margin(prob_home, prob_draw, prob_away):
 def calculate_xpts(prob_win, prob_draw):
     """Calculate expected points: 3 * P(win) + 1 * P(draw) + 0 * P(loss)"""
     return 3 * prob_win + prob_draw
+
+def create_league_standings(df, league, seasons):
+    """Create comprehensive league standings with xPTS and performance metrics"""
+    # Filter data
+    df_league = df[df['country'] == league].copy()
+    if seasons:
+        df_league = df_league[df_league['sezonul'].isin(seasons)]
+    
+    # Collect all teams
+    all_teams = set(df_league['txtechipa1'].unique()) | set(df_league['txtechipa2'].unique())
+    
+    standings_data = []
+    
+    for team in all_teams:
+        # Home games
+        home_games = df_league[df_league['txtechipa1'] == team]
+        # Away games
+        away_games = df_league[df_league['txtechipa2'] == team]
+        
+        if len(home_games) == 0 and len(away_games) == 0:
+            continue
+        
+        # Home statistics
+        home_xpts = home_games['xPTS_home'].sum()
+        home_actual = home_games['actual_pts_home'].sum()
+        home_matches = len(home_games)
+        
+        # Away statistics
+        away_xpts = away_games['xPTS_away'].sum()
+        away_actual = away_games['actual_pts_away'].sum()
+        away_matches = len(away_games)
+        
+        # Overall statistics
+        total_xpts = home_xpts + away_xpts
+        total_actual = home_actual + away_actual
+        total_matches = home_matches + away_matches
+        overperformance = total_actual - total_xpts
+        
+        standings_data.append({
+            'Team': team,
+            'Matches': total_matches,
+            'Home_Matches': home_matches,
+            'Away_Matches': away_matches,
+            'Actual_Pts': total_actual,
+            'xPTS': total_xpts,
+            'Diff': overperformance,
+            'Home_xPTS': home_xpts,
+            'Home_Actual': home_actual,
+            'Home_Diff': home_actual - home_xpts,
+            'Away_xPTS': away_xpts,
+            'Away_Actual': away_actual,
+            'Away_Diff': away_actual - away_xpts,
+            'Avg_xPTS': total_xpts / total_matches if total_matches > 0 else 0,
+            'Avg_Actual': total_actual / total_matches if total_matches > 0 else 0,
+        })
+    
+    standings_df = pd.DataFrame(standings_data)
+    
+    if len(standings_df) > 0:
+        standings_df = standings_df.sort_values('Actual_Pts', ascending=False).reset_index(drop=True)
+        standings_df.index = standings_df.index + 1
+    
+    return standings_df
+
+def style_dataframe_with_gradient(df, column, cmap='RdYlGn', vmin=None, vmax=None):
+    """Apply color gradient to a dataframe column"""
+    if vmin is None:
+        vmin = df[column].min()
+    if vmax is None:
+        vmax = df[column].max()
+    
+    # Normalize values
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    cmap = plt.cm.get_cmap(cmap)
+    
+    def color_cell(val):
+        if pd.isna(val):
+            return ''
+        color = mcolors.rgb2hex(cmap(norm(val)))
+        return f'background-color: {color}'
+    
+    return color_cell
 
 def process_data(df):
     """Process the dataset and calculate xPTS"""
@@ -156,18 +240,32 @@ if uploaded_file is not None:
         
         with col1:
             countries = ['All'] + sorted(df_processed['country'].unique().tolist())
-            selected_country = st.selectbox("Country", countries)
+            selected_country = st.selectbox("League/Country", countries, key='country_filter')
         
         with col2:
-            seasons = ['All'] + sorted(df_processed['sezonul'].unique().tolist())
-            selected_season = st.selectbox("Season", seasons)
+            all_seasons = sorted(df_processed['sezonul'].unique().tolist())
+            if selected_country != 'All':
+                available_seasons = sorted(df_processed[df_processed['country'] == selected_country]['sezonul'].unique().tolist())
+            else:
+                available_seasons = all_seasons
+            
+            season_option = st.radio("Season Selection", ["All Seasons", "Specific Season(s)"], horizontal=True)
+            
+            if season_option == "All Seasons":
+                selected_seasons = available_seasons
+            else:
+                selected_seasons = st.multiselect(
+                    "Select Season(s)", 
+                    available_seasons,
+                    default=[available_seasons[-1]] if available_seasons else []
+                )
         
         with col3:
             teams = ['All'] + sorted(
                 set(df_processed['txtechipa1'].unique().tolist() + 
                     df_processed['txtechipa2'].unique().tolist())
             )
-            selected_team = st.selectbox("Team", teams)
+            selected_team = st.selectbox("Team", teams, key='team_filter')
         
         # Apply filters
         df_filtered = df_processed.copy()
@@ -175,8 +273,8 @@ if uploaded_file is not None:
         if selected_country != 'All':
             df_filtered = df_filtered[df_filtered['country'] == selected_country]
         
-        if selected_season != 'All':
-            df_filtered = df_filtered[df_filtered['sezonul'] == selected_season]
+        if season_option == "Specific Season(s)" and selected_seasons:
+            df_filtered = df_filtered[df_filtered['sezonul'].isin(selected_seasons)]
         
         if selected_team != 'All':
             df_filtered = df_filtered[
@@ -186,6 +284,156 @@ if uploaded_file is not None:
         
         if len(df_filtered) > 0:
             st.write(f"**Filtered Results:** {len(df_filtered):,} fixtures")
+            
+            # League Standings Tables (only show when a specific league is selected)
+            if selected_country != 'All':
+                st.header(f"📊 {selected_country} League Standings")
+                
+                season_display = "All Seasons" if season_option == "All Seasons" else f"Season(s): {', '.join(map(str, selected_seasons))}"
+                st.subheader(season_display)
+                
+                # Create standings
+                standings = create_league_standings(df_filtered, selected_country, selected_seasons if season_option == "Specific Season(s)" else None)
+                
+                if len(standings) > 0:
+                    # Create tabs for different views
+                    tab1, tab2, tab3 = st.tabs(["📈 Overall Performance", "🏠 Home Performance", "✈️ Away Performance"])
+                    
+                    with tab1:
+                        st.markdown("### Overall Standings")
+                        
+                        # Prepare display dataframe
+                        overall_display = standings[['Team', 'Matches', 'Actual_Pts', 'xPTS', 'Diff', 'Avg_Actual', 'Avg_xPTS']].copy()
+                        overall_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff', 'PPG', 'xPPG']
+                        
+                        # Format numbers
+                        overall_display['xPTS'] = overall_display['xPTS'].round(1)
+                        overall_display['Diff'] = overall_display['Diff'].round(1)
+                        overall_display['PPG'] = overall_display['PPG'].round(2)
+                        overall_display['xPPG'] = overall_display['xPPG'].round(2)
+                        
+                        # Apply styling
+                        styled_overall = overall_display.style.background_gradient(
+                            subset=['Diff'],
+                            cmap='RdYlGn',
+                            vmin=-15,
+                            vmax=15
+                        ).background_gradient(
+                            subset=['PPG'],
+                            cmap='YlGn',
+                            vmin=0,
+                            vmax=3
+                        ).format({
+                            'xPTS': '{:.1f}',
+                            'Diff': '{:+.1f}',
+                            'PPG': '{:.2f}',
+                            'xPPG': '{:.2f}'
+                        })
+                        
+                        st.dataframe(styled_overall, use_container_width=True, height=600)
+                        
+                        # Statistics
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Avg Points", f"{overall_display['Pts'].mean():.1f}")
+                        with col2:
+                            st.metric("Avg xPTS", f"{overall_display['xPTS'].mean():.1f}")
+                        with col3:
+                            best_overperformer = overall_display.loc[overall_display['Diff'].idxmax()]
+                            st.metric("Best Overperformer", best_overperformer['Team'], f"+{best_overperformer['Diff']:.1f}")
+                        with col4:
+                            worst_underperformer = overall_display.loc[overall_display['Diff'].idxmin()]
+                            st.metric("Biggest Underperformer", worst_underperformer['Team'], f"{worst_underperformer['Diff']:.1f}")
+                    
+                    with tab2:
+                        st.markdown("### Home Performance")
+                        
+                        # Prepare home display dataframe
+                        home_display = standings[['Team', 'Home_Matches', 'Home_Actual', 'Home_xPTS', 'Home_Diff']].copy()
+                        home_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
+                        home_display = home_display.sort_values('Pts', ascending=False).reset_index(drop=True)
+                        home_display.index = home_display.index + 1
+                        
+                        # Format numbers
+                        home_display['xPTS'] = home_display['xPTS'].round(1)
+                        home_display['Diff'] = home_display['Diff'].round(1)
+                        
+                        # Add averages
+                        home_display['PPG'] = (home_display['Pts'] / home_display['M']).round(2)
+                        home_display['xPPG'] = (home_display['xPTS'] / home_display['M']).round(2)
+                        
+                        # Apply styling
+                        styled_home = home_display.style.background_gradient(
+                            subset=['Diff'],
+                            cmap='RdYlGn',
+                            vmin=-10,
+                            vmax=10
+                        ).background_gradient(
+                            subset=['PPG'],
+                            cmap='YlGn',
+                            vmin=0,
+                            vmax=3
+                        ).format({
+                            'xPTS': '{:.1f}',
+                            'Diff': '{:+.1f}',
+                            'PPG': '{:.2f}',
+                            'xPPG': '{:.2f}'
+                        })
+                        
+                        st.dataframe(styled_home, use_container_width=True, height=600)
+                        
+                        # Home statistics
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Avg Home PPG", f"{home_display['PPG'].mean():.2f}")
+                        with col2:
+                            st.metric("Avg Home xPPG", f"{home_display['xPPG'].mean():.2f}")
+                    
+                    with tab3:
+                        st.markdown("### Away Performance")
+                        
+                        # Prepare away display dataframe
+                        away_display = standings[['Team', 'Away_Matches', 'Away_Actual', 'Away_xPTS', 'Away_Diff']].copy()
+                        away_display.columns = ['Team', 'M', 'Pts', 'xPTS', 'Diff']
+                        away_display = away_display.sort_values('Pts', ascending=False).reset_index(drop=True)
+                        away_display.index = away_display.index + 1
+                        
+                        # Format numbers
+                        away_display['xPTS'] = away_display['xPTS'].round(1)
+                        away_display['Diff'] = away_display['Diff'].round(1)
+                        
+                        # Add averages
+                        away_display['PPG'] = (away_display['Pts'] / away_display['M']).round(2)
+                        away_display['xPPG'] = (away_display['xPTS'] / away_display['M']).round(2)
+                        
+                        # Apply styling
+                        styled_away = away_display.style.background_gradient(
+                            subset=['Diff'],
+                            cmap='RdYlGn',
+                            vmin=-10,
+                            vmax=10
+                        ).background_gradient(
+                            subset=['PPG'],
+                            cmap='YlGn',
+                            vmin=0,
+                            vmax=3
+                        ).format({
+                            'xPTS': '{:.1f}',
+                            'Diff': '{:+.1f}',
+                            'PPG': '{:.2f}',
+                            'xPPG': '{:.2f}'
+                        })
+                        
+                        st.dataframe(styled_away, use_container_width=True, height=600)
+                        
+                        # Away statistics
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Avg Away PPG", f"{away_display['PPG'].mean():.2f}")
+                        with col2:
+                            st.metric("Avg Away xPPG", f"{away_display['xPPG'].mean():.2f}")
+                
+                st.markdown("---")
             
             # Calculate team-specific stats if a team is selected
             if selected_team != 'All':
