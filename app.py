@@ -6,13 +6,48 @@ import matplotlib.colors as mcolors
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
+import os
 
 st.set_page_config(page_title="xPTS Calculator", page_icon="⚽", layout="wide")
 
 st.title("⚽ Expected Points (xPTS) Calculator")
 st.markdown("Calculate expected points from betting odds with automatic margin removal")
 
+# Default data path
+DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), 'default_data_translated.xlsx')
+
 # Helper functions
+def load_default_data():
+    """Load the default integrated dataset"""
+    if os.path.exists(DEFAULT_DATA_PATH):
+        return pd.read_excel(DEFAULT_DATA_PATH)
+    return None
+
+def translate_column_names(df):
+    """Ensure column names are in English"""
+    # Check if already translated
+    if 'home_team' in df.columns:
+        return df
+    
+    # Translation mapping for backwards compatibility
+    column_mapping = {
+        'country': 'league',
+        'sezonul': 'season',
+        'etapa': 'round',
+        'txtechipa1': 'home_team',
+        'txtechipa2': 'away_team',
+        'scor1': 'home_score',
+        'scor2': 'away_score',
+        'scorp1': 'home_score_ht',
+        'scorp2': 'away_score_ht',
+        'cotaa': 'odds_home',
+        'cotae': 'odds_draw',
+        'cotad': 'odds_away'
+    }
+    
+    # Only rename columns that exist
+    existing_columns = {k: v for k, v in column_mapping.items() if k in df.columns}
+    return df.rename(columns=existing_columns)
 def calculate_implied_probabilities(home_odds, draw_odds, away_odds):
     """Calculate implied probabilities from decimal odds"""
     prob_home = 1 / home_odds
@@ -39,20 +74,20 @@ def calculate_xpts(prob_win, prob_draw):
 def create_league_standings(df, league, seasons):
     """Create comprehensive league standings with xPTS and performance metrics"""
     # Filter data
-    df_league = df[df['country'] == league].copy()
+    df_league = df[df['league'] == league].copy()
     if seasons:
-        df_league = df_league[df_league['sezonul'].isin(seasons)]
+        df_league = df_league[df_league['season'].isin(seasons)]
     
     # Collect all teams
-    all_teams = set(df_league['txtechipa1'].unique()) | set(df_league['txtechipa2'].unique())
+    all_teams = set(df_league['home_team'].unique()) | set(df_league['away_team'].unique())
     
     standings_data = []
     
     for team in all_teams:
         # Home games
-        home_games = df_league[df_league['txtechipa1'] == team]
+        home_games = df_league[df_league['home_team'] == team]
         # Away games
-        away_games = df_league[df_league['txtechipa2'] == team]
+        away_games = df_league[df_league['away_team'] == team]
         
         if len(home_games) == 0 and len(away_games) == 0:
             continue
@@ -102,23 +137,23 @@ def create_league_standings(df, league, seasons):
 def calculate_team_form(df, team, window_sizes=[5, 10, 15]):
     """Calculate rolling form for a team across different window sizes"""
     # Get all games for the team (sorted by season and round)
-    home_games = df[df['txtechipa1'] == team].copy()
-    away_games = df[df['txtechipa2'] == team].copy()
+    home_games = df[df['home_team'] == team].copy()
+    away_games = df[df['away_team'] == team].copy()
     
     # Add venue column
     home_games['venue'] = 'Home'
     home_games['team_xpts'] = home_games['xPTS_home']
     home_games['team_actual'] = home_games['actual_pts_home']
-    home_games['opponent'] = home_games['txtechipa2']
+    home_games['opponent'] = home_games['away_team']
     
     away_games['venue'] = 'Away'
     away_games['team_xpts'] = away_games['xPTS_away']
     away_games['team_actual'] = away_games['actual_pts_away']
-    away_games['opponent'] = away_games['txtechipa1']
+    away_games['opponent'] = away_games['home_team']
     
     # Combine and sort by season and round
     all_games = pd.concat([home_games, away_games], ignore_index=True)
-    all_games = all_games.sort_values(['sezonul', 'etapa']).reset_index(drop=True)
+    all_games = all_games.sort_values(['season', 'round']).reset_index(drop=True)
     
     # Calculate rolling averages
     form_data = []
@@ -176,31 +211,31 @@ def get_form_string(recent_games, n=5):
 
 def calculate_goal_statistics(df, team):
     """Calculate comprehensive goal scoring statistics for a team"""
-    home_games = df[df['txtechipa1'] == team].copy()
-    away_games = df[df['txtechipa2'] == team].copy()
+    home_games = df[df['home_team'] == team].copy()
+    away_games = df[df['away_team'] == team].copy()
     
     # Home statistics
     home_stats = {
-        'goals_scored': home_games['scor1'].sum(),
-        'goals_conceded': home_games['scor2'].sum(),
+        'goals_scored': home_games['home_score'].sum(),
+        'goals_conceded': home_games['away_score'].sum(),
         'matches': len(home_games),
-        'clean_sheets': (home_games['scor2'] == 0).sum(),
-        'failed_to_score': (home_games['scor1'] == 0).sum(),
-        'btts': ((home_games['scor1'] > 0) & (home_games['scor2'] > 0)).sum(),
-        'over_2_5': ((home_games['scor1'] + home_games['scor2']) > 2.5).sum(),
-        'over_1_5': ((home_games['scor1'] + home_games['scor2']) > 1.5).sum(),
+        'clean_sheets': (home_games['away_score'] == 0).sum(),
+        'failed_to_score': (home_games['home_score'] == 0).sum(),
+        'btts': ((home_games['home_score'] > 0) & (home_games['away_score'] > 0)).sum(),
+        'over_2_5': ((home_games['home_score'] + home_games['away_score']) > 2.5).sum(),
+        'over_1_5': ((home_games['home_score'] + home_games['away_score']) > 1.5).sum(),
     }
     
     # Away statistics
     away_stats = {
-        'goals_scored': away_games['scor2'].sum(),
-        'goals_conceded': away_games['scor1'].sum(),
+        'goals_scored': away_games['away_score'].sum(),
+        'goals_conceded': away_games['home_score'].sum(),
         'matches': len(away_games),
-        'clean_sheets': (away_games['scor1'] == 0).sum(),
-        'failed_to_score': (away_games['scor2'] == 0).sum(),
-        'btts': ((away_games['scor1'] > 0) & (away_games['scor2'] > 0)).sum(),
-        'over_2_5': ((away_games['scor1'] + away_games['scor2']) > 2.5).sum(),
-        'over_1_5': ((away_games['scor1'] + away_games['scor2']) > 1.5).sum(),
+        'clean_sheets': (away_games['home_score'] == 0).sum(),
+        'failed_to_score': (away_games['away_score'] == 0).sum(),
+        'btts': ((away_games['home_score'] > 0) & (away_games['away_score'] > 0)).sum(),
+        'over_2_5': ((away_games['home_score'] + away_games['away_score']) > 2.5).sum(),
+        'over_1_5': ((away_games['home_score'] + away_games['away_score']) > 1.5).sum(),
     }
     
     # Overall statistics
@@ -266,16 +301,16 @@ def calculate_variance_metrics(team_data):
 
 def calculate_opponent_strength(df, league):
     """Calculate opponent strength ratings based on xPTS"""
-    df_league = df[df['country'] == league].copy()
+    df_league = df[df['league'] == league].copy()
     
     # Calculate average xPTS for each team
-    all_teams = set(df_league['txtechipa1'].unique()) | set(df_league['txtechipa2'].unique())
+    all_teams = set(df_league['home_team'].unique()) | set(df_league['away_team'].unique())
     
     team_strength = {}
     
     for team in all_teams:
-        home_games = df_league[df_league['txtechipa1'] == team]
-        away_games = df_league[df_league['txtechipa2'] == team]
+        home_games = df_league[df_league['home_team'] == team]
+        away_games = df_league[df_league['away_team'] == team]
         
         if len(home_games) + len(away_games) > 0:
             total_xpts = home_games['xPTS_home'].sum() + away_games['xPTS_away'].sum()
@@ -311,14 +346,14 @@ def calculate_opponent_strength(df, league):
 
 def calculate_schedule_difficulty(df, team, opponent_strength):
     """Calculate strength of schedule for a team"""
-    home_games = df[df['txtechipa1'] == team].copy()
-    away_games = df[df['txtechipa2'] == team].copy()
+    home_games = df[df['home_team'] == team].copy()
+    away_games = df[df['away_team'] == team].copy()
     
     # Add opponent strength to each game
-    home_games['opponent_strength'] = home_games['txtechipa2'].map(
+    home_games['opponent_strength'] = home_games['away_team'].map(
         lambda x: opponent_strength.get(x, {}).get('avg_xpts', 1.5)
     )
-    away_games['opponent_strength'] = away_games['txtechipa1'].map(
+    away_games['opponent_strength'] = away_games['home_team'].map(
         lambda x: opponent_strength.get(x, {}).get('avg_xpts', 1.5)
     )
     
@@ -337,7 +372,7 @@ def calculate_schedule_difficulty(df, team, opponent_strength):
     all_games = []
     for _, game in home_games.iterrows():
         all_games.append({
-            'opponent': game['txtechipa2'],
+            'opponent': game['away_team'],
             'venue': 'Home',
             'opponent_strength': game['opponent_strength'],
             'result': game['actual_pts_home']
@@ -345,7 +380,7 @@ def calculate_schedule_difficulty(df, team, opponent_strength):
     
     for _, game in away_games.iterrows():
         all_games.append({
-            'opponent': game['txtechipa1'],
+            'opponent': game['home_team'],
             'venue': 'Away',
             'opponent_strength': game['opponent_strength'],
             'result': game['actual_pts_away']
@@ -496,25 +531,28 @@ def style_dataframe_with_gradient(df, column, cmap='RdYlGn', vmin=None, vmax=Non
 
 def process_data(df):
     """Process the dataset and calculate xPTS"""
+    # Ensure English column names
+    df = translate_column_names(df)
+    
     # Create a copy to avoid modifying original
     df_processed = df.copy()
     
     # Remove rows with missing odds
     initial_rows = len(df_processed)
-    df_processed = df_processed.dropna(subset=['cotaa', 'cotae', 'cotad'])
+    df_processed = df_processed.dropna(subset=['odds_home', 'odds_draw', 'odds_away'])
     rows_removed = initial_rows - len(df_processed)
     
     # Remove rows with invalid odds (odds must be >= 1.01)
     df_processed = df_processed[
-        (df_processed['cotaa'] >= 1.01) & 
-        (df_processed['cotae'] >= 1.01) & 
-        (df_processed['cotad'] >= 1.01)
+        (df_processed['odds_home'] >= 1.01) & 
+        (df_processed['odds_draw'] >= 1.01) & 
+        (df_processed['odds_away'] >= 1.01)
     ]
     
     # Calculate implied probabilities
-    df_processed['implied_prob_home'] = 1 / df_processed['cotaa']
-    df_processed['implied_prob_draw'] = 1 / df_processed['cotae']
-    df_processed['implied_prob_away'] = 1 / df_processed['cotad']
+    df_processed['implied_prob_home'] = 1 / df_processed['odds_home']
+    df_processed['implied_prob_draw'] = 1 / df_processed['odds_draw']
+    df_processed['implied_prob_away'] = 1 / df_processed['odds_away']
     
     # Calculate total (margin)
     df_processed['total_implied'] = (
@@ -541,22 +579,71 @@ def process_data(df):
     
     # Calculate actual points
     df_processed['actual_pts_home'] = df_processed.apply(
-        lambda row: 3 if row['scor1'] > row['scor2'] 
-        else (1 if row['scor1'] == row['scor2'] else 0), 
+        lambda row: 3 if row['home_score'] > row['away_score'] 
+        else (1 if row['home_score'] == row['away_score'] else 0), 
         axis=1
     )
     df_processed['actual_pts_away'] = df_processed.apply(
-        lambda row: 3 if row['scor2'] > row['scor1'] 
-        else (1 if row['scor1'] == row['scor2'] else 0), 
+        lambda row: 3 if row['away_score'] > row['home_score'] 
+        else (1 if row['home_score'] == row['away_score'] else 0), 
         axis=1
     )
     
     return df_processed, rows_removed
 
 # File upload
-uploaded_file = st.file_uploader("Upload Excel file with betting data", type=['xlsx', 'xls'])
+st.subheader("📂 Data Source")
 
-if uploaded_file is not None:
+# Check if default data exists
+default_data = load_default_data()
+
+if default_data is not None:
+    st.success(f"✅ Using integrated dataset: {len(default_data):,} fixtures | Last updated: January 2026")
+    
+    # Option to upload custom file
+    with st.expander("📤 Upload Custom Data (Optional)"):
+        uploaded_file = st.file_uploader("Upload your own Excel file", type=['xlsx', 'xls'])
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file)
+                df = translate_column_names(df)
+                st.info(f"Using custom uploaded file: {len(df):,} rows")
+            except Exception as e:
+                st.error(f"Error loading custom file: {str(e)}")
+                df = default_data
+        else:
+            df = default_data
+else:
+    st.warning("⚠️ No default data found. Please upload an Excel file.")
+    uploaded_file = st.file_uploader("Upload Excel file with betting data", type=['xlsx', 'xls'])
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_excel(uploaded_file)
+            df = translate_column_names(df)
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
+            st.stop()
+    else:
+        st.info("👆 Please upload an Excel file to get started")
+        st.markdown("""
+        ### Expected File Format
+        
+        The Excel file should contain the following columns:
+        - **league** (or country): League/country code
+        - **season** (or sezonul): Season
+        - **round** (or etapa): Round/matchday
+        - **home_team** (or txtechipa1): Home team name
+        - **away_team** (or txtechipa2): Away team name
+        - **home_score** (or scor1): Home team score
+        - **away_score** (or scor2): Away team score
+        - **odds_home** (or cotaa): Home win odds (decimal)
+        - **odds_draw** (or cotae): Draw odds (decimal)
+        - **odds_away** (or cotad): Away win odds (decimal)
+        """)
+        st.stop()
+
+if 'df' in locals():
     try:
         # Load data
         df = pd.read_excel(uploaded_file)
@@ -585,18 +672,18 @@ if uploaded_file is not None:
         with col3:
             st.metric("Avg Margin", f"{df_processed['margin'].mean():.2%}")
         with col4:
-            st.metric("Countries", df_processed['country'].nunique())
+            st.metric("Leagues", df_processed['league'].nunique())
         
         # Display processed data
         st.header("🎯 Calculated xPTS Data")
         
         # Select columns to display
         display_columns = [
-            'country', 'sezonul', 'etapa', 'txtechipa1', 'txtechipa2',
-            'cotaa', 'cotae', 'cotad',
+            'league', 'season', 'round', 'home_team', 'away_team',
+            'odds_home', 'odds_draw', 'odds_away',
             'true_prob_home', 'true_prob_draw', 'true_prob_away',
             'xPTS_home', 'xPTS_away',
-            'scor1', 'scor2', 'actual_pts_home', 'actual_pts_away'
+            'home_score', 'away_score', 'actual_pts_home', 'actual_pts_away'
         ]
         
         df_display = df_processed[display_columns].copy()
@@ -618,13 +705,13 @@ if uploaded_file is not None:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            countries = ['All'] + sorted(df_processed['country'].unique().tolist())
+            countries = ['All'] + sorted(df_processed['league'].unique().tolist())
             selected_country = st.selectbox("League/Country", countries, key='country_filter')
         
         with col2:
-            all_seasons = sorted(df_processed['sezonul'].unique().tolist())
+            all_seasons = sorted(df_processed['season'].unique().tolist())
             if selected_country != 'All':
-                available_seasons = sorted(df_processed[df_processed['country'] == selected_country]['sezonul'].unique().tolist())
+                available_seasons = sorted(df_processed[df_processed['league'] == selected_country]['season'].unique().tolist())
             else:
                 available_seasons = all_seasons
             
@@ -643,14 +730,14 @@ if uploaded_file is not None:
             # Filter teams based on selected league
             if selected_country != 'All':
                 league_teams = set(
-                    df_processed[df_processed['country'] == selected_country]['txtechipa1'].unique().tolist() + 
-                    df_processed[df_processed['country'] == selected_country]['txtechipa2'].unique().tolist()
+                    df_processed[df_processed['league'] == selected_country]['home_team'].unique().tolist() + 
+                    df_processed[df_processed['league'] == selected_country]['away_team'].unique().tolist()
                 )
                 teams = ['All'] + sorted(league_teams)
             else:
                 teams = ['All'] + sorted(
-                    set(df_processed['txtechipa1'].unique().tolist() + 
-                        df_processed['txtechipa2'].unique().tolist())
+                    set(df_processed['home_team'].unique().tolist() + 
+                        df_processed['away_team'].unique().tolist())
                 )
             selected_team = st.selectbox("Team", teams, key='team_filter')
         
@@ -658,15 +745,15 @@ if uploaded_file is not None:
         df_filtered = df_processed.copy()
         
         if selected_country != 'All':
-            df_filtered = df_filtered[df_filtered['country'] == selected_country]
+            df_filtered = df_filtered[df_filtered['league'] == selected_country]
         
         if season_option == "Specific Season(s)" and selected_seasons:
-            df_filtered = df_filtered[df_filtered['sezonul'].isin(selected_seasons)]
+            df_filtered = df_filtered[df_filtered['season'].isin(selected_seasons)]
         
         if selected_team != 'All':
             df_filtered = df_filtered[
-                (df_filtered['txtechipa1'] == selected_team) | 
-                (df_filtered['txtechipa2'] == selected_team)
+                (df_filtered['home_team'] == selected_team) | 
+                (df_filtered['away_team'] == selected_team)
             ]
         
         if len(df_filtered) > 0:
@@ -827,9 +914,9 @@ if uploaded_file is not None:
                 st.subheader(f"📊 {selected_team} Statistics")
                 
                 # Home games
-                home_games = df_filtered[df_filtered['txtechipa1'] == selected_team]
+                home_games = df_filtered[df_filtered['home_team'] == selected_team]
                 # Away games
-                away_games = df_filtered[df_filtered['txtechipa2'] == selected_team]
+                away_games = df_filtered[df_filtered['away_team'] == selected_team]
                 
                 col1, col2, col3, col4 = st.columns(4)
                 
@@ -906,7 +993,7 @@ if uploaded_file is not None:
                         st.markdown("#### Last 15 Matches")
                         
                         recent_display = recent_15[[
-                            'sezonul', 'etapa', 'venue', 'opponent', 
+                            'season', 'round', 'venue', 'opponent', 
                             'team_actual', 'team_xpts'
                         ]].copy()
                         
@@ -997,7 +1084,7 @@ if uploaded_file is not None:
                         
                         # Full match history
                         history_display = team_form[[
-                            'sezonul', 'etapa', 'venue', 'opponent',
+                            'season', 'round', 'venue', 'opponent',
                             'team_actual', 'team_xpts', 
                             'rolling_actual_10', 'rolling_xpts_10'
                         ]].copy()
