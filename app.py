@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime
 
 st.set_page_config(page_title="xPTS Calculator", page_icon="⚽", layout="wide")
 
@@ -95,6 +98,179 @@ def create_league_standings(df, league, seasons):
         standings_df.index = standings_df.index + 1
     
     return standings_df
+
+def calculate_team_form(df, team, window_sizes=[5, 10, 15]):
+    """Calculate rolling form for a team across different window sizes"""
+    # Get all games for the team (sorted by season and round)
+    home_games = df[df['txtechipa1'] == team].copy()
+    away_games = df[df['txtechipa2'] == team].copy()
+    
+    # Add venue column
+    home_games['venue'] = 'Home'
+    home_games['team_xpts'] = home_games['xPTS_home']
+    home_games['team_actual'] = home_games['actual_pts_home']
+    home_games['opponent'] = home_games['txtechipa2']
+    
+    away_games['venue'] = 'Away'
+    away_games['team_xpts'] = away_games['xPTS_away']
+    away_games['team_actual'] = away_games['actual_pts_away']
+    away_games['opponent'] = away_games['txtechipa1']
+    
+    # Combine and sort by season and round
+    all_games = pd.concat([home_games, away_games], ignore_index=True)
+    all_games = all_games.sort_values(['sezonul', 'etapa']).reset_index(drop=True)
+    
+    # Calculate rolling averages
+    form_data = []
+    for window in window_sizes:
+        rolling_xpts = all_games['team_xpts'].rolling(window=window, min_periods=1).mean()
+        rolling_actual = all_games['team_actual'].rolling(window=window, min_periods=1).mean()
+        
+        form_data.append({
+            f'rolling_xpts_{window}': rolling_xpts,
+            f'rolling_actual_{window}': rolling_actual,
+            f'rolling_diff_{window}': rolling_actual - rolling_xpts
+        })
+    
+    # Add form data to all_games
+    for data in form_data:
+        for key, values in data.items():
+            all_games[key] = values
+    
+    return all_games
+
+def calculate_momentum(recent_games, window=5):
+    """Calculate momentum indicator based on recent performance"""
+    if len(recent_games) < window:
+        return "Insufficient Data"
+    
+    recent = recent_games.tail(window)
+    diff = (recent['team_actual'] - recent['team_xpts']).mean()
+    
+    if diff > 0.5:
+        return "🔥 Hot Streak"
+    elif diff > 0.2:
+        return "📈 Good Form"
+    elif diff > -0.2:
+        return "➡️ Average"
+    elif diff > -0.5:
+        return "📉 Poor Form"
+    else:
+        return "❄️ Cold Streak"
+
+def get_form_string(recent_games, n=5):
+    """Get last N results as a string (W/D/L)"""
+    if len(recent_games) == 0:
+        return "N/A"
+    
+    results = []
+    for _, game in recent_games.tail(n).iterrows():
+        if game['team_actual'] == 3:
+            results.append('W')
+        elif game['team_actual'] == 1:
+            results.append('D')
+        else:
+            results.append('L')
+    
+    return ' '.join(results)
+
+def create_form_chart(team_data, team_name):
+    """Create interactive form chart showing xPTS vs actual points over time"""
+    fig = go.Figure()
+    
+    # Add actual points line
+    fig.add_trace(go.Scatter(
+        x=list(range(1, len(team_data) + 1)),
+        y=team_data['rolling_actual_10'],
+        mode='lines+markers',
+        name='Actual PPG (10-game avg)',
+        line=dict(color='#2E86AB', width=3),
+        marker=dict(size=6)
+    ))
+    
+    # Add xPTS line
+    fig.add_trace(go.Scatter(
+        x=list(range(1, len(team_data) + 1)),
+        y=team_data['rolling_xpts_10'],
+        mode='lines+markers',
+        name='xPTS PPG (10-game avg)',
+        line=dict(color='#A23B72', width=3, dash='dash'),
+        marker=dict(size=6)
+    ))
+    
+    # Add individual match points as background
+    fig.add_trace(go.Scatter(
+        x=list(range(1, len(team_data) + 1)),
+        y=team_data['team_actual'],
+        mode='markers',
+        name='Match Result',
+        marker=dict(
+            size=8,
+            color=team_data['team_actual'].map({3: 'green', 1: 'orange', 0: 'red'}),
+            opacity=0.3
+        ),
+        showlegend=True
+    ))
+    
+    fig.update_layout(
+        title=f"{team_name} - Form Analysis (Rolling 10-Game Average)",
+        xaxis_title="Match Number",
+        yaxis_title="Points Per Game",
+        hovermode='x unified',
+        height=500,
+        template='plotly_white',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
+
+def create_momentum_chart(team_data, team_name):
+    """Create chart showing performance vs expectation over time"""
+    fig = go.Figure()
+    
+    # Calculate difference for each match
+    team_data['diff'] = team_data['team_actual'] - team_data['team_xpts']
+    
+    # Create bar chart
+    colors = ['green' if x > 0 else 'red' if x < 0 else 'gray' for x in team_data['diff']]
+    
+    fig.add_trace(go.Bar(
+        x=list(range(1, len(team_data) + 1)),
+        y=team_data['diff'],
+        marker_color=colors,
+        name='Performance vs Expectation',
+        hovertemplate='Match %{x}<br>Diff: %{y:.2f}<extra></extra>'
+    ))
+    
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color="black", opacity=0.3)
+    
+    # Add rolling average of difference
+    fig.add_trace(go.Scatter(
+        x=list(range(1, len(team_data) + 1)),
+        y=team_data['rolling_diff_10'],
+        mode='lines',
+        name='10-Game Avg Difference',
+        line=dict(color='blue', width=3)
+    ))
+    
+    fig.update_layout(
+        title=f"{team_name} - Performance vs Expectation",
+        xaxis_title="Match Number",
+        yaxis_title="Points Above/Below xPTS",
+        hovermode='x unified',
+        height=400,
+        template='plotly_white',
+        showlegend=True
+    )
+    
+    return fig
 
 def style_dataframe_with_gradient(df, column, cmap='RdYlGn', vmin=None, vmax=None):
     """Apply color gradient to a dataframe column"""
@@ -461,6 +637,188 @@ if uploaded_file is not None:
                 with col4:
                     difference = total_actual - total_xpts
                     st.metric("Overperformance", f"{difference:+.1f}")
+                
+                # FORM ANALYSIS SECTION
+                st.markdown("---")
+                st.header(f"📈 {selected_team} - Form Analysis & Trends")
+                
+                # Calculate form data
+                team_form = calculate_team_form(df_filtered, selected_team)
+                
+                if len(team_form) >= 5:
+                    # Create tabs for different form analyses
+                    form_tab1, form_tab2, form_tab3, form_tab4 = st.tabs([
+                        "📊 Form Charts", 
+                        "🔥 Recent Form", 
+                        "📉 Rolling Averages",
+                        "📋 Match History"
+                    ])
+                    
+                    with form_tab1:
+                        st.markdown("### Performance Trends")
+                        
+                        # Main form chart
+                        form_fig = create_form_chart(team_form, selected_team)
+                        st.plotly_chart(form_fig, use_container_width=True)
+                        
+                        # Momentum chart
+                        momentum_fig = create_momentum_chart(team_form, selected_team)
+                        st.plotly_chart(momentum_fig, use_container_width=True)
+                    
+                    with form_tab2:
+                        st.markdown("### Recent Form Analysis")
+                        
+                        # Get last 15 games
+                        recent_15 = team_form.tail(15)
+                        
+                        # Form indicators
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            form_5 = get_form_string(team_form, 5)
+                            st.metric("Last 5 Games", form_5)
+                        
+                        with col2:
+                            momentum = calculate_momentum(team_form, 5)
+                            st.metric("Momentum (Last 5)", momentum)
+                        
+                        with col3:
+                            recent_5_actual = recent_15.tail(5)['team_actual'].sum()
+                            st.metric("Points (Last 5)", f"{recent_5_actual}")
+                        
+                        with col4:
+                            recent_5_xpts = recent_15.tail(5)['team_xpts'].sum()
+                            recent_5_diff = recent_5_actual - recent_5_xpts
+                            st.metric("vs xPTS (Last 5)", f"{recent_5_diff:+.1f}")
+                        
+                        # Recent matches table
+                        st.markdown("#### Last 15 Matches")
+                        
+                        recent_display = recent_15[[
+                            'sezonul', 'etapa', 'venue', 'opponent', 
+                            'team_actual', 'team_xpts'
+                        ]].copy()
+                        
+                        recent_display.columns = ['Season', 'Round', 'Venue', 'Opponent', 'Pts', 'xPTS']
+                        recent_display['Diff'] = recent_display['Pts'] - recent_display['xPTS']
+                        recent_display['Result'] = recent_display['Pts'].map({3: '✅ Win', 1: '🟡 Draw', 0: '❌ Loss'})
+                        
+                        # Format numbers
+                        recent_display['xPTS'] = recent_display['xPTS'].round(2)
+                        recent_display['Diff'] = recent_display['Diff'].round(2)
+                        
+                        # Reverse order to show most recent first
+                        recent_display = recent_display.iloc[::-1].reset_index(drop=True)
+                        
+                        # Apply styling
+                        styled_recent = recent_display.style.background_gradient(
+                            subset=['Diff'],
+                            cmap='RdYlGn',
+                            vmin=-3,
+                            vmax=3
+                        ).applymap(
+                            lambda x: 'background-color: #d4edda' if x == '✅ Win' 
+                            else ('background-color: #fff3cd' if x == '🟡 Draw' 
+                            else 'background-color: #f8d7da'),
+                            subset=['Result']
+                        )
+                        
+                        st.dataframe(styled_recent, use_container_width=True, height=400)
+                    
+                    with form_tab3:
+                        st.markdown("### Rolling Performance Metrics")
+                        
+                        # Display rolling averages for different windows
+                        windows = [5, 10, 15]
+                        
+                        for window in windows:
+                            if len(team_form) >= window:
+                                st.markdown(f"#### Last {window} Games Average")
+                                
+                                last_n = team_form.tail(window)
+                                
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
+                                    avg_actual = last_n['team_actual'].mean()
+                                    st.metric(f"Avg Points", f"{avg_actual:.2f}")
+                                
+                                with col2:
+                                    avg_xpts = last_n['team_xpts'].mean()
+                                    st.metric(f"Avg xPTS", f"{avg_xpts:.2f}")
+                                
+                                with col3:
+                                    diff = avg_actual - avg_xpts
+                                    st.metric(f"Difference", f"{diff:+.2f}")
+                                
+                                with col4:
+                                    wins = (last_n['team_actual'] == 3).sum()
+                                    win_rate = (wins / window) * 100
+                                    st.metric(f"Win Rate", f"{win_rate:.0f}%")
+                        
+                        # Trend comparison chart
+                        st.markdown("#### Form Comparison Across Windows")
+                        
+                        trend_fig = go.Figure()
+                        
+                        for window in [5, 10, 15]:
+                            trend_fig.add_trace(go.Scatter(
+                                x=list(range(1, len(team_form) + 1)),
+                                y=team_form[f'rolling_actual_{window}'],
+                                mode='lines',
+                                name=f'{window}-game avg (Actual)',
+                                line=dict(width=2)
+                            ))
+                        
+                        trend_fig.update_layout(
+                            title="Rolling Average Comparison (Actual Points)",
+                            xaxis_title="Match Number",
+                            yaxis_title="Points Per Game",
+                            height=400,
+                            template='plotly_white',
+                            hovermode='x unified'
+                        )
+                        
+                        st.plotly_chart(trend_fig, use_container_width=True)
+                    
+                    with form_tab4:
+                        st.markdown("### Complete Match History")
+                        
+                        # Full match history
+                        history_display = team_form[[
+                            'sezonul', 'etapa', 'venue', 'opponent',
+                            'team_actual', 'team_xpts', 
+                            'rolling_actual_10', 'rolling_xpts_10'
+                        ]].copy()
+                        
+                        history_display.columns = [
+                            'Season', 'Round', 'Venue', 'Opponent',
+                            'Pts', 'xPTS', '10G Avg (Pts)', '10G Avg (xPTS)'
+                        ]
+                        
+                        history_display['Diff'] = history_display['Pts'] - history_display['xPTS']
+                        history_display['Form Diff'] = history_display['10G Avg (Pts)'] - history_display['10G Avg (xPTS)']
+                        
+                        # Format numbers
+                        for col in ['xPTS', '10G Avg (Pts)', '10G Avg (xPTS)', 'Diff', 'Form Diff']:
+                            history_display[col] = history_display[col].round(2)
+                        
+                        # Reverse to show most recent first
+                        history_display = history_display.iloc[::-1].reset_index(drop=True)
+                        
+                        st.dataframe(history_display, use_container_width=True, height=500)
+                        
+                        # Download button for match history
+                        csv_history = history_display.to_csv(index=False)
+                        st.download_button(
+                            label=f"Download {selected_team} Match History (CSV)",
+                            data=csv_history,
+                            file_name=f"{selected_team}_match_history.csv",
+                            mime="text/csv"
+                        )
+                
+                else:
+                    st.info(f"Need at least 5 matches for form analysis. {selected_team} has {len(team_form)} match(es) in selected period.")
             
             # Display filtered data
             df_filtered_display = df_filtered[display_columns].copy()
