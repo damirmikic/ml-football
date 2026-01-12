@@ -437,10 +437,18 @@ if uploaded_file is not None:
                 )
         
         with col3:
-            teams = ['All'] + sorted(
-                set(df_processed['txtechipa1'].unique().tolist() + 
-                    df_processed['txtechipa2'].unique().tolist())
-            )
+            # Filter teams based on selected league
+            if selected_country != 'All':
+                league_teams = set(
+                    df_processed[df_processed['country'] == selected_country]['txtechipa1'].unique().tolist() + 
+                    df_processed[df_processed['country'] == selected_country]['txtechipa2'].unique().tolist()
+                )
+                teams = ['All'] + sorted(league_teams)
+            else:
+                teams = ['All'] + sorted(
+                    set(df_processed['txtechipa1'].unique().tolist() + 
+                        df_processed['txtechipa2'].unique().tolist())
+                )
             selected_team = st.selectbox("Team", teams, key='team_filter')
         
         # Apply filters
