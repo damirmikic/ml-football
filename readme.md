@@ -2,6 +2,57 @@
 
 An automated web application for calculating expected points from betting odds in football/soccer matches with advanced league analytics.
 
+## 🚀 Quick Start
+
+The app now comes with **integrated data** - no file upload needed!
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
+streamlit run xpts_calculator.py
+```
+
+The app will automatically load with 45,168+ fixtures from 51 leagues ready to analyze.
+
+## 📊 Integrated Dataset
+
+**Included by default:**
+- **45,168 fixtures** across 51 leagues worldwide
+- **Seasons:** 2023-2026 (4 complete seasons)
+- **Last Updated:** January 2026
+- **Coverage:** Major European leagues + worldwide competitions
+
+**Data includes:**
+- Match results (home/away scores)
+- Betting odds (home/draw/away)
+- League and season information
+- Half-time scores
+
+**You can still upload custom data** - just expand the "Upload Custom Data" section in the app.
+
+## 📁 Column Names (English)
+
+All data uses standardized English column names:
+
+| Column | Description |
+|--------|-------------|
+| league | League/country code (e.g., "Eng1", "Spa1") |
+| season | Season (23 = 2023, 24 = 2024, etc.) |
+| round | Round/matchday number |
+| home_team | Home team name |
+| away_team | Away team name |
+| home_score | Home team final score |
+| away_score | Away team final score |
+| home_score_ht | Home team half-time score |
+| away_score_ht | Away team half-time score |
+| odds_home | Home win odds (decimal format) |
+| odds_draw | Draw odds (decimal format) |
+| odds_away | Away win odds (decimal format) |
+
+**Backwards Compatibility:** The app automatically translates old Romanian column names to English.
+
 ## 🎯 What It Does
 
 This application:
