@@ -1,6 +1,6 @@
 # ⚽ Expected Points (xPTS) Calculator
 
-An automated web application for calculating expected points from betting odds in football/soccer matches.
+An automated web application for calculating expected points from betting odds in football/soccer matches with advanced league analytics.
 
 ## 🎯 What It Does
 
@@ -8,7 +8,39 @@ This application:
 1. **Cleans missing data** - Removes fixtures with invalid or missing odds
 2. **Calculates true probabilities** - Removes bookmaker's margin from odds
 3. **Computes xPTS** - Calculates expected points for home and away teams
-4. **Provides analytics** - Team statistics, filtering, and data export
+4. **League standings** - Creates comprehensive standings tables with performance metrics
+5. **Color-coded analysis** - Visual gradients highlight over/underperformers
+6. **Multi-season support** - Analyze single or multiple seasons together
+
+## ✨ New Features
+
+### League Standings Tables
+When you select a specific league, the app automatically generates:
+
+- **Overall Performance Table**
+  - Actual points vs xPTS with color-coded differences
+  - Points per game (PPG) with gradient highlighting
+  - Overperformance metrics (actual - expected)
+
+- **Home Performance Table**
+  - Home-specific statistics
+  - Home PPG with color gradients
+  - Home over/underperformance
+
+- **Away Performance Table**
+  - Away-specific statistics
+  - Away PPG with color gradients
+  - Away over/underperformance
+
+### Multi-Season Selection
+- Choose "All Seasons" for comprehensive analysis
+- Select specific season(s) for targeted insights
+- Multi-select allows combining multiple seasons
+
+### Color Gradients
+- 🟢 **Green** = Overperformers (earning more points than expected)
+- 🟡 **Yellow** = Performing as expected
+- 🔴 **Red** = Underperformers (earning fewer points than expected)
 
 ## 📊 How xPTS is Calculated
 
@@ -86,10 +118,33 @@ Then open your browser to `http://localhost:8501`
 
 ## 📈 Use Cases
 
-1. **Team Performance Analysis** - Compare expected vs actual points to identify overperforming/underperforming teams
-2. **Betting Value** - Find matches where bookmaker odds diverge from true probabilities
-3. **League Analysis** - Compare bookmaker margins across different leagues
-4. **Historical Trends** - Analyze team xPTS trends over multiple seasons
+1. **League Performance Analysis** - Identify teams over/underperforming their expected points
+2. **Team Comparison** - Compare home vs away performance across seasons
+3. **Betting Value** - Find matches where bookmaker odds diverge from true probabilities
+4. **Multi-Season Trends** - Track team performance evolution across multiple seasons
+5. **Home/Away Splits** - Analyze venue-specific performance patterns
+
+## 📊 Sample League Standings Output
+
+```
+English Premier League (Seasons 23-24)
+
+TOP 5 TEAMS:
+Pos  Team           M    Pts   xPTS   Diff    PPG   xPPG
+1    Man City      76   180   174.4   +5.6   2.37  2.29
+2    Arsenal       76   173   155.2  +17.8   2.28  2.04  🟢 Overperformer
+3    Liverpool     76   149   153.1   -4.1   1.96  2.01
+4    Man Utd       76   135   123.3  +11.7   1.78  1.62  🟢 Overperformer
+5    Newcastle     76   131   123.7   +7.3   1.72  1.63
+
+BIGGEST OVERPERFORMERS:
+- Aston Villa: +21.9 points above xPTS
+- Arsenal: +17.8 points above xPTS
+
+BIGGEST UNDERPERFORMERS:
+- Chelsea: -21.0 points below xPTS
+- Leeds: -11.9 points below xPTS
+```
 
 ## 🧪 Validation Results
 
@@ -120,9 +175,24 @@ Expected Points:
 ## 🛠️ Technologies Used
 
 - **Streamlit** - Web application framework
-- **Pandas** - Data processing
+- **Pandas** - Data processing and analysis
 - **NumPy** - Numerical computations
+- **Matplotlib** - Color gradients and styling
 - **OpenPyXL** - Excel file handling
+
+## 🎨 Features Overview
+
+### Visual Analytics
+- Color-coded performance tables
+- Green gradients for overperformers
+- Red gradients for underperformers
+- PPG (Points Per Game) highlighting
+
+### Flexible Filtering
+- League/country selection
+- Multi-season selection
+- Individual team analysis
+- All seasons or specific season(s)
 
 ## 📝 Notes
 
