@@ -1,396 +1,295 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from xgboost import XGBRegressor
-from sklearn.metrics import mean_squared_error
-import shap
-import matplotlib.pyplot as plt
-import warnings
 
-warnings.filterwarnings("ignore")
+st.set_page_config(page_title="xPTS Calculator", page_icon="⚽", layout="wide")
 
-st.set_page_config(page_title="Football ML Predictor", layout="wide")
+st.title("⚽ Expected Points (xPTS) Calculator")
+st.markdown("Calculate expected points from betting odds with automatic margin removal")
 
-############################################################
-# COLUMN DEFINITIONS
-############################################################
+# Helper functions
+def calculate_implied_probabilities(home_odds, draw_odds, away_odds):
+    """Calculate implied probabilities from decimal odds"""
+    prob_home = 1 / home_odds
+    prob_draw = 1 / draw_odds
+    prob_away = 1 / away_odds
+    return prob_home, prob_draw, prob_away
 
-REQUIRED_COLUMNS = [
-    "country", "season", "round",
-    "home", "away",
-    "home_goals", "away_goals",
-    "home_win", "draw", "away_win",
-    "over2.5", "under2.5",
-    "gg", "ng",
-    "suth", "suta",
-    "corh", "cora",
-    "yellowh", "yellowa",
-]
+def remove_margin(prob_home, prob_draw, prob_away):
+    """Remove bookmaker's margin using proportional method"""
+    total = prob_home + prob_draw + prob_away
+    margin = total - 1
+    
+    # Normalize to get true probabilities
+    true_prob_home = prob_home / total
+    true_prob_draw = prob_draw / total
+    true_prob_away = prob_away / total
+    
+    return true_prob_home, true_prob_draw, true_prob_away, margin
 
-OPTIONAL_COLUMNS = [
-    "ballph", "ballpa",
-    "foulsh", "foulsa",
-    "sutht", "sutat",
-]
+def calculate_xpts(prob_win, prob_draw):
+    """Calculate expected points: 3 * P(win) + 1 * P(draw) + 0 * P(loss)"""
+    return 3 * prob_win + prob_draw
 
-COLUMN_DESCRIPTIONS = {
-    "country": "League identifier (e.g., ENG1, GER1, SRB1).",
-    "season": "Season number (e.g., 2023).",
-    "round": "Match round (integer).",
-    "home": "Home team.",
-    "away": "Away team.",
-    "home_goals": "Full-time home goals.",
-    "away_goals": "Full-time away goals.",
-    "home_win": "Odds for home win.",
-    "draw": "Odds for draw.",
-    "away_win": "Odds for away win.",
-    "over2.5": "Over 2.5 goals odds.",
-    "under2.5": "Under 2.5 goals odds.",
-    "gg": "BTTS Yes.",
-    "ng": "BTTS No.",
-    "suth": "Home shots.",
-    "suta": "Away shots.",
-    "sutht": "Home SOT.",
-    "sutat": "Away SOT.",
-    "corh": "Home corners.",
-    "cora": "Away corners.",
-    "yellowh": "Home yellow cards.",
-    "yellowa": "Away yellow cards.",
-    "ballph": "Home possession (%).",
-    "ballpa": "Away possession (%).",
-    "foulsh": "Home fouls.",
-    "foulsa": "Away fouls.",
-}
-
-TARGET_COLS = {
-    "shots_home": "suth",
-    "shots_away": "suta",
-    "corners_home": "corh",
-    "corners_away": "cora",
-    "cards_home": "yellowh",
-    "cards_away": "yellowa",
-}
-
-############################################################
-# HEADER + HELP
-############################################################
-
-st.title("⚽ Football ML Predictor – Shots / Corners / Cards")
-
-with st.expander("📘 Column requirements"):
-    st.markdown("### Required columns:")
-    for col in REQUIRED_COLUMNS:
-        st.markdown(f"- **{col}** — {COLUMN_DESCRIPTIONS.get(col, '')}")
-
-    st.markdown("### Optional columns:")
-    for col in OPTIONAL_COLUMNS:
-        st.markdown(f"- **{col}** — {COLUMN_DESCRIPTIONS.get(col, '')}")
-
-############################################################
-# CSV UPLOAD
-############################################################
-
-uploaded = st.file_uploader("📤 Upload your dataset (CSV)", type=["csv"])
-
-if not uploaded:
-    st.info("Upload CSV to begin.")
-    st.stop()
-
-############################################################
-# LOAD CSV WITH AUTO-DETECT
-############################################################
-
-@st.cache_data
-def load_csv(file):
-    # Try normal CSV
-    try:
-        df = pd.read_csv(file)
-        if df.shape[1] > 5:
-            return df
-    except:
-        pass
-
-    # Try single-column semicolon dataset
-    try:
-        file.seek(0)
-        raw = pd.read_csv(file, header=None)
-        if raw.shape[1] == 1:
-            df = raw[0].str.split(";", expand=True)
-            header = df.iloc[0].tolist()
-            df = df.drop(index=0).reset_index(drop=True)
-            df.columns = header
-            return df
-    except:
-        pass
-
-    return None
-
-df = load_csv(uploaded)
-
-if df is None:
-    st.error(
-        "❌ Could not parse CSV.\n"
-        "Upload a standard CSV or a semicolon-separated single-column file."
+def process_data(df):
+    """Process the dataset and calculate xPTS"""
+    # Create a copy to avoid modifying original
+    df_processed = df.copy()
+    
+    # Remove rows with missing odds
+    initial_rows = len(df_processed)
+    df_processed = df_processed.dropna(subset=['cotaa', 'cotae', 'cotad'])
+    rows_removed = initial_rows - len(df_processed)
+    
+    # Remove rows with invalid odds (odds must be >= 1.01)
+    df_processed = df_processed[
+        (df_processed['cotaa'] >= 1.01) & 
+        (df_processed['cotae'] >= 1.01) & 
+        (df_processed['cotad'] >= 1.01)
+    ]
+    
+    # Calculate implied probabilities
+    df_processed['implied_prob_home'] = 1 / df_processed['cotaa']
+    df_processed['implied_prob_draw'] = 1 / df_processed['cotae']
+    df_processed['implied_prob_away'] = 1 / df_processed['cotad']
+    
+    # Calculate total (margin)
+    df_processed['total_implied'] = (
+        df_processed['implied_prob_home'] + 
+        df_processed['implied_prob_draw'] + 
+        df_processed['implied_prob_away']
     )
-    st.stop()
+    df_processed['margin'] = df_processed['total_implied'] - 1
+    
+    # Calculate true probabilities (remove margin)
+    df_processed['true_prob_home'] = df_processed['implied_prob_home'] / df_processed['total_implied']
+    df_processed['true_prob_draw'] = df_processed['implied_prob_draw'] / df_processed['total_implied']
+    df_processed['true_prob_away'] = df_processed['implied_prob_away'] / df_processed['total_implied']
+    
+    # Calculate xPTS
+    df_processed['xPTS_home'] = calculate_xpts(
+        df_processed['true_prob_home'], 
+        df_processed['true_prob_draw']
+    )
+    df_processed['xPTS_away'] = calculate_xpts(
+        df_processed['true_prob_away'], 
+        df_processed['true_prob_draw']
+    )
+    
+    # Calculate actual points
+    df_processed['actual_pts_home'] = df_processed.apply(
+        lambda row: 3 if row['scor1'] > row['scor2'] 
+        else (1 if row['scor1'] == row['scor2'] else 0), 
+        axis=1
+    )
+    df_processed['actual_pts_away'] = df_processed.apply(
+        lambda row: 3 if row['scor2'] > row['scor1'] 
+        else (1 if row['scor1'] == row['scor2'] else 0), 
+        axis=1
+    )
+    
+    return df_processed, rows_removed
 
-# Safe numeric conversion
-for col in df.columns:
+# File upload
+uploaded_file = st.file_uploader("Upload Excel file with betting data", type=['xlsx', 'xls'])
+
+if uploaded_file is not None:
     try:
-        df[col] = pd.to_numeric(df[col], errors="ignore")
-    except:
-        pass
-
-############################################################
-# VALIDATE COLUMNS
-############################################################
-
-missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
-
-if missing:
-    st.error("❌ Missing required columns:")
-    for m in missing:
-        st.write(f"- {m}")
-    st.stop()
-
-############################################################
-# ODDS NORMALIZATION + EXPECTED METRICS
-############################################################
-
-def normalize_odds(df_in):
-    df = df_in.copy()
-    oc = ["home_win", "draw", "away_win", "over2.5", "under2.5", "gg", "ng"]
-    for c in oc:
-        df[f"p_{c}"] = 1 / df[c]
-
-    groups = {
-        "1x2": ["p_home_win", "p_draw", "p_away_win"],
-        "total": ["p_over2.5", "p_under2.5"],
-        "btts": ["p_gg", "p_ng"],
-    }
-
-    for _, cols in groups.items():
-        total = df[cols].sum(axis=1)
-        for c in cols:
-            df[c.replace("p_", "pn_")] = df[c] / total
-
-    return df
-
-def add_expected(df_in):
-    df = df_in.copy()
-
-    df["xG_total"] = 2.5 + (df["pn_over2.5"] - 0.5) * 2.8
-
-    df["att_home"] = df["pn_home_win"] + 0.5 * df["pn_draw"]
-    df["att_away"] = df["pn_away_win"] + 0.5 * df["pn_draw"]
-
-    df["xG_home"] = df["xG_total"] * df["att_home"] / (df["att_home"] + df["att_away"])
-    df["xG_away"] = df["xG_total"] - df["xG_home"]
-
-    beta_home = 8.02
-    beta_away = 8.73
-    gamma = 0.364
-    delta_home = 0.404
-    delta_away = 0.406
-
-    df["xShots_home"] = df["xG_home"] * beta_home
-    df["xShots_away"] = df["xG_away"] * beta_away
-
-    df["xSOT_home"] = df["xShots_home"] * gamma
-    df["xSOT_away"] = df["xShots_away"] * gamma
-
-    df["xCorners_home"] = df["xShots_home"] * delta_home
-    df["xCorners_away"] = df["xShots_away"] * delta_away
-
-    df["pos_home"] = df.get("ballph", pd.Series(50, index=df.index)) / 100
-    df["pos_away"] = df.get("ballpa", pd.Series(50, index=df.index)) / 100
-
-    total_fouls = df.get("foulsh", 0).sum() + df.get("foulsa", 0).sum()
-    foul_rate = total_fouls / len(df) if total_fouls > 0 else 20
-
-    df["xFouls_home"] = (1 - df["pos_home"]) * foul_rate * 0.5
-    df["xFouls_away"] = (1 - df["pos_away"]) * foul_rate * 0.5
-
-    theta_home = 0.176
-    theta_away = 0.193
-
-    df["tempo"] = 0.5 + df["pn_over2.5"]
-    df["xCards_home"] = df["xFouls_home"] * theta_home * df["tempo"]
-    df["xCards_away"] = df["xFouls_away"] * theta_away * df["tempo"]
-
-    return df
-
-df = normalize_odds(df)
-df = add_expected(df)
-
-############################################################
-# ML DATA
-############################################################
-
-numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-feature_cols = [c for c in numeric_cols if c not in TARGET_COLS.values()]
-
-ml_df = df.dropna(subset=list(TARGET_COLS.values()) + feature_cols)
-
-if ml_df.empty:
-    st.error("No complete rows for training (missing shots/corners/cards/odds).")
-    st.stop()
-
-############################################################
-# TRAIN MODELS
-############################################################
-
-@st.cache_resource
-def train_models(df_ml, feature_cols):
-    models = {}
-    X = df_ml[feature_cols]
-
-    for name, target in TARGET_COLS.items():
-        y = df_ml[target]
-
-        model = XGBRegressor(
-            n_estimators=300,
-            max_depth=5,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            objective="reg:squarederror",
-        )
-        model.fit(X, y)
-        models[name] = model
-
-    return models
-
-models = train_models(ml_df, feature_cols)
-
-############################################################
-# UI (TABS)
-############################################################
-
-tab_pred, tab_pred_idx, tab_shap = st.tabs(
-    ["Predict match", "League predictability", "SHAP"]
-)
-
-############################################################
-# PREDICT MATCH
-############################################################
-
-with tab_pred:
-    st.subheader("🔮 Predict match stats")
-
-    leagues = sorted(df["country"].unique())
-    league = st.selectbox("Select league", leagues)
-
-    teams = sorted(df[df["country"] == league]["home"].unique())
-    c1, c2 = st.columns(2)
-    home_t = c1.selectbox("Home team", teams)
-    away_t = c2.selectbox("Away team", teams)
-
-    c3, c4, c5 = st.columns(3)
-    home_odds = c3.number_input("Home win", value=2.0)
-    draw_odds = c4.number_input("Draw", value=3.3)
-    away_odds = c5.number_input("Away win", value=3.4)
-
-    c6, c7, c8 = st.columns(3)
-    over25 = c6.number_input("Over 2.5", value=2.0)
-    under25 = c7.number_input("Under 2.5", value=1.85)
-    gg = c8.number_input("BTTS Yes", value=1.8)
-    ng = st.number_input("BTTS No", value=1.9)
-
-    if st.button("Predict"):
-        row = pd.DataFrame([{
-            **{c: 0 for c in feature_cols},
-            "home_win": home_odds,
-            "draw": draw_odds,
-            "away_win": away_odds,
-            "over2.5": over25,
-            "under2.5": under25,
-            "gg": gg,
-            "ng": ng,
-        }])
-
-        row = normalize_odds(row)
-        row = add_expected(row)
-
-        for c in feature_cols:
-            if c not in row.columns:
-                row[c] = 0
-
-        X_row = row[feature_cols]
-
-        preds = {name: float(models[name].predict(X_row)[0]) for name in models}
-
-        st.metric("Home shots", f"{preds['shots_home']:.1f}")
-        st.metric("Away shots", f"{preds['shots_away']:.1f}")
-        st.metric("Home corners", f"{preds['corners_home']:.1f}")
-        st.metric("Away corners", f"{preds['corners_away']:.1f}")
-        st.metric("Home cards", f"{preds['cards_home']:.2f}")
-        st.metric("Away cards", f"{preds['cards_away']:.2f}")
-
-############################################################
-# PREDICTABILITY INDEX (RMSE FIX)
-############################################################
-
-with tab_pred_idx:
-    st.subheader("📈 League predictability index (RMSE-based)")
-
-    rows = []
-
-    for lg, subset in ml_df.groupby("country"):
-        if len(subset) < 150:
-            continue
-
-        X_lg = subset[feature_cols]
-
-        for name, model in models.items():
-            y_true = subset[TARGET_COLS[name]]
-            y_pred = model.predict(X_lg)
-
-            mse = mean_squared_error(y_true, y_pred)
-            rmse = float(np.sqrt(mse))
-            std = float(y_true.std())
-
-            pred_idx = 1 - rmse / std if std > 0 else 0
-
-            rows.append({
-                "league": lg,
-                "target": name,
-                "rmse": rmse,
-                "std": std,
-                "predictability": pred_idx,
-                "n_matches": len(subset),
-            })
-
-    if rows:
-        table = pd.DataFrame(rows)
-        st.dataframe(
-            table.sort_values(["target", "predictability"], ascending=[True, False]),
+        # Load data
+        df = pd.read_excel(uploaded_file)
+        
+        st.success(f"✅ File loaded successfully! {len(df):,} rows found")
+        
+        # Show original data structure
+        with st.expander("📊 View Original Data Structure"):
+            st.write(f"**Shape:** {df.shape[0]:,} rows × {df.shape[1]} columns")
+            st.write("**Columns:**", df.columns.tolist())
+            st.dataframe(df.head(10))
+        
+        # Process data
+        with st.spinner("Processing data and calculating xPTS..."):
+            df_processed, rows_removed = process_data(df)
+        
+        # Display summary statistics
+        st.header("📈 Summary Statistics")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total Fixtures", f"{len(df_processed):,}")
+        with col2:
+            st.metric("Rows Cleaned", f"{rows_removed:,}")
+        with col3:
+            st.metric("Avg Margin", f"{df_processed['margin'].mean():.2%}")
+        with col4:
+            st.metric("Countries", df_processed['country'].nunique())
+        
+        # Display processed data
+        st.header("🎯 Calculated xPTS Data")
+        
+        # Select columns to display
+        display_columns = [
+            'country', 'sezonul', 'etapa', 'txtechipa1', 'txtechipa2',
+            'cotaa', 'cotae', 'cotad',
+            'true_prob_home', 'true_prob_draw', 'true_prob_away',
+            'xPTS_home', 'xPTS_away',
+            'scor1', 'scor2', 'actual_pts_home', 'actual_pts_away'
+        ]
+        
+        df_display = df_processed[display_columns].copy()
+        
+        # Format probabilities and xPTS
+        prob_cols = ['true_prob_home', 'true_prob_draw', 'true_prob_away']
+        for col in prob_cols:
+            df_display[col] = df_display[col].apply(lambda x: f"{x:.1%}")
+        
+        xpts_cols = ['xPTS_home', 'xPTS_away']
+        for col in xpts_cols:
+            df_display[col] = df_display[col].apply(lambda x: f"{x:.2f}")
+        
+        st.dataframe(df_display, use_container_width=True, height=400)
+        
+        # Filters
+        st.header("🔍 Filter Data")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            countries = ['All'] + sorted(df_processed['country'].unique().tolist())
+            selected_country = st.selectbox("Country", countries)
+        
+        with col2:
+            seasons = ['All'] + sorted(df_processed['sezonul'].unique().tolist())
+            selected_season = st.selectbox("Season", seasons)
+        
+        with col3:
+            teams = ['All'] + sorted(
+                set(df_processed['txtechipa1'].unique().tolist() + 
+                    df_processed['txtechipa2'].unique().tolist())
+            )
+            selected_team = st.selectbox("Team", teams)
+        
+        # Apply filters
+        df_filtered = df_processed.copy()
+        
+        if selected_country != 'All':
+            df_filtered = df_filtered[df_filtered['country'] == selected_country]
+        
+        if selected_season != 'All':
+            df_filtered = df_filtered[df_filtered['sezonul'] == selected_season]
+        
+        if selected_team != 'All':
+            df_filtered = df_filtered[
+                (df_filtered['txtechipa1'] == selected_team) | 
+                (df_filtered['txtechipa2'] == selected_team)
+            ]
+        
+        if len(df_filtered) > 0:
+            st.write(f"**Filtered Results:** {len(df_filtered):,} fixtures")
+            
+            # Calculate team-specific stats if a team is selected
+            if selected_team != 'All':
+                st.subheader(f"📊 {selected_team} Statistics")
+                
+                # Home games
+                home_games = df_filtered[df_filtered['txtechipa1'] == selected_team]
+                # Away games
+                away_games = df_filtered[df_filtered['txtechipa2'] == selected_team]
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    total_xpts = home_games['xPTS_home'].sum() + away_games['xPTS_away'].sum()
+                    st.metric("Total xPTS", f"{total_xpts:.1f}")
+                
+                with col2:
+                    total_actual = home_games['actual_pts_home'].sum() + away_games['actual_pts_away'].sum()
+                    st.metric("Total Actual Points", f"{total_actual}")
+                
+                with col3:
+                    avg_xpts = (home_games['xPTS_home'].mean() + away_games['xPTS_away'].mean()) / 2
+                    st.metric("Avg xPTS per Game", f"{avg_xpts:.2f}")
+                
+                with col4:
+                    difference = total_actual - total_xpts
+                    st.metric("Overperformance", f"{difference:+.1f}")
+            
+            # Display filtered data
+            df_filtered_display = df_filtered[display_columns].copy()
+            
+            for col in prob_cols:
+                df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.1%}")
+            
+            for col in xpts_cols:
+                df_filtered_display[col] = df_filtered_display[col].apply(lambda x: f"{x:.2f}")
+            
+            st.dataframe(df_filtered_display, use_container_width=True, height=400)
+        else:
+            st.warning("No data matches the selected filters")
+        
+        # Download processed data
+        st.header("💾 Download Processed Data")
+        
+        # Prepare download
+        csv = df_processed.to_csv(index=False)
+        st.download_button(
+            label="Download Complete Dataset (CSV)",
+            data=csv,
+            file_name="xpts_processed_data.csv",
+            mime="text/csv",
             use_container_width=True
         )
-    else:
-        st.info("Not enough data (need 150+ matches per league).")
+        
+        # Explanation section
+        with st.expander("ℹ️ How xPTS is Calculated"):
+            st.markdown("""
+            ### Expected Points (xPTS) Calculation
+            
+            **Step 1: Calculate Implied Probabilities**
+            - Home Win: 1 / Home Odds
+            - Draw: 1 / Draw Odds
+            - Away Win: 1 / Away Odds
+            
+            **Step 2: Remove Bookmaker's Margin**
+            - Total = P(Home) + P(Draw) + P(Away)
+            - Margin = Total - 1
+            - True Probabilities = Implied Probability / Total
+            
+            **Step 3: Calculate xPTS**
+            - xPTS Home = 3 × P(Home Win) + 1 × P(Draw)
+            - xPTS Away = 3 × P(Away Win) + 1 × P(Draw)
+            
+            ### Column Definitions
+            - **cotaa**: Home win odds (decimal)
+            - **cotae**: Draw odds (decimal)
+            - **cotad**: Away win odds (decimal)
+            - **xPTS**: Expected points based on true probabilities
+            - **Margin**: Bookmaker's overround (profit margin)
+            """)
+        
+    except Exception as e:
+        st.error(f"❌ Error processing file: {str(e)}")
+        st.exception(e)
 
-############################################################
-# SHAP
-############################################################
+else:
+    st.info("👆 Please upload an Excel file to get started")
+    
+    st.markdown("""
+    ### Expected File Format
+    
+    The Excel file should contain the following columns:
+    - **country**: League/country code
+    - **sezonul**: Season
+    - **etapa**: Round/matchday
+    - **txtechipa1**: Home team name
+    - **txtechipa2**: Away team name
+    - **scor1**: Home team score
+    - **scor2**: Away team score
+    - **cotaa**: Home win odds (decimal)
+    - **cotae**: Draw odds (decimal)
+    - **cotad**: Away win odds (decimal)
+    """)
 
-with tab_shap:
-    st.subheader("🧠 SHAP Feature Importance")
-
-    shap_target = st.selectbox("Select model:", list(models.keys()))
-
-    if st.button("Run SHAP"):
-        st.write("Computing SHAP values...")
-
-        # Sample safely
-        X_sample = ml_df[feature_cols].sample(
-            min(600, len(ml_df)), random_state=42
-        )
-
-        explainer = shap.TreeExplainer(models[shap_target])
-        shap_values = explainer.shap_values(X_sample)
-
-        shap.summary_plot(shap_values, X_sample, show=False)
-        st.pyplot(plt.gcf())
-
-st.success("App loaded successfully.")
+# Footer
+st.markdown("---")
+st.markdown("*xPTS Calculator - Built for betting analytics*")
