@@ -40,6 +40,67 @@ Advanced performance tracking and momentum indicators:
   - Points and xPTS comparison
   - Match-by-match performance breakdown
 
+### Goal Scoring Patterns ⚽
+Comprehensive goal-based statistics for betting markets:
+
+- **Scoring Metrics**
+  - Goals scored/conceded per game (overall, home, away)
+  - Goal difference and trends
+  - Attacking and defensive strength
+
+- **Betting Market Statistics**
+  - Clean sheets frequency
+  - Both Teams To Score (BTTS) rate
+  - Over/Under 2.5 goals frequency
+  - Over/Under 1.5 goals frequency
+  - Failed to score rate
+
+- **Home/Away Splits**
+  - Separate statistics for home and away games
+  - Venue-specific goal patterns
+  - Comparative analysis
+
+### Variance & Consistency Analysis 📉
+Statistical measures of team predictability and regression indicators:
+
+- **Consistency Metrics**
+  - Performance consistency score (lower = more predictable)
+  - xPTS volatility (Coefficient of Variation)
+  - Standard deviation of results
+  - Performance variance analysis
+
+- **Regression Indicators**
+  - Likelihood to regress to mean
+  - Recent vs overall performance comparison
+  - Overperformance sustainability analysis
+  - ⚠️ Warning flags for likely regression
+
+- **Result Distribution**
+  - Win/Draw/Loss percentage breakdown
+  - Result pattern analysis
+  - Probability distributions
+
+### Strength of Schedule (SOS) 💪
+Opponent quality analysis and fixture difficulty rating:
+
+- **Schedule Difficulty**
+  - Average opponent strength (xPTS-based)
+  - Home vs away schedule comparison
+  - League-relative difficulty rating
+  - 🔴 Very Difficult / 🟡 Above Average / ⚪ Average / 🟢 Easy
+
+- **Quality of Results**
+  - Average strength of teams beaten
+  - Average strength of teams lost to
+  - Best win quality
+  - Worst loss quality
+
+- **Opponent Breakdown**
+  - Hardest opponents faced (top 5)
+  - Easiest opponents faced (bottom 5)
+  - Results against different strength tiers
+  - Win rate by opponent quality
+
 ### League Standings Tables
 When you select a specific league, the app automatically generates:
 
@@ -145,13 +206,15 @@ Then open your browser to `http://localhost:8501`
 ## 📈 Use Cases
 
 1. **Form-Based Betting** - Identify teams on hot/cold streaks for informed betting
-2. **Performance Trends** - Track team momentum across different time windows
-3. **League Performance Analysis** - Identify teams over/underperforming their expected points
-4. **Team Comparison** - Compare home vs away performance across seasons
-5. **Value Detection** - Find matches where bookmaker odds diverge from form-adjusted expectations
-6. **Multi-Season Trends** - Track team performance evolution and consistency
-7. **Regression Analysis** - Identify teams likely to regress to the mean
-8. **Streak Identification** - Find teams in hot/cold streaks for strategic betting
+2. **Goal Market Betting** - Target BTTS, Over/Under, and clean sheet markets with data
+3. **Consistency Analysis** - Find predictable teams vs volatile performers
+4. **Regression Betting** - Identify teams likely to regress to the mean
+5. **Strength of Schedule** - Adjust expectations based on opponent difficulty
+6. **Performance Trends** - Track team momentum across different time windows
+7. **Value Detection** - Find matches where form/stats diverge from odds
+8. **Multi-Season Trends** - Track team performance evolution and consistency
+9. **Market-Specific Strategies** - Use goal patterns for specialized markets
+10. **Quality Wins Analysis** - Evaluate team performance against strong/weak opponents
 
 ## 📊 Sample League Standings Output
 
@@ -192,6 +255,70 @@ Last 15: 40 pts (2.67 PPG) vs 34.3 xPTS (2.29 PPG) → +5.7 overperformance
 SEASON COMPARISON:
 Season 23: 84 pts (2.21 PPG) vs 73.6 xPTS → +10.4 overperformance
 Season 24: 89 pts (2.34 PPG) vs 81.5 xPTS → +7.5 overperformance
+```
+
+## ⚽ Sample Goal Patterns Output
+
+```
+Arsenal - Goal Scoring Patterns (Seasons 23-24)
+
+OVERALL STATISTICS:
+Goals Scored: 179 (2.36 per game)
+Goals Conceded: 72 (0.95 per game)
+Goal Difference: +107 (+1.41 per game)
+
+BETTING PATTERNS:
+Clean Sheets: 42.1% (32 of 76 matches)
+BTTS Rate: 48.7% (37 of 76 matches)
+Over 2.5 Goals: 65.8% (50 of 76 matches)
+Failed to Score: 11.8% (9 of 76 matches)
+
+HOME vs AWAY:
+Home: 2.47 goals/game scored, 0.87 conceded
+Away: 2.24 goals/game scored, 1.03 conceded
+```
+
+## 📉 Sample Variance Analysis Output
+
+```
+Arsenal - Variance & Consistency
+
+CONSISTENCY METRICS:
+Consistency Score: 1.093 (Moderately consistent)
+xPTS Volatility (CV): 0.210
+Performance Std Dev: 1.093
+
+REGRESSION INDICATOR:
+✅ Stable performance
+Recent (L10): +0.26 PPG vs xPTS
+Overall: +0.24 PPG vs xPTS
+
+RESULT DISTRIBUTION:
+Wins: 71.1% (54 matches)
+Draws: 14.5% (11 matches)
+Losses: 14.5% (11 matches)
+```
+
+## 💪 Sample Strength of Schedule Output
+
+```
+Arsenal - Strength of Schedule
+
+SCHEDULE DIFFICULTY:
+Avg Opponent Strength: 1.349 xPTS
+League Average: 1.325 xPTS
+Rating: 🟡 Above Average Difficulty (+0.023)
+
+QUALITY OF RESULTS:
+Avg Strength Beaten: 1.279 xPTS
+Best Win Quality: 2.295 xPTS (vs top opponent)
+Avg Strength Lost To: 1.523 xPTS
+Worst Loss: 1.012 xPTS (upset loss)
+
+HARDEST OPPONENTS FACED:
+1. Man City (2.295 xPTS) - Away - ✅ Win
+2. Liverpool (2.015 xPTS) - Home - ❌ Loss
+3. Chelsea (1.845 xPTS) - Home - ✅ Win
 ```
 
 ## 🧪 Validation Results
