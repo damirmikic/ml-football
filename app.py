@@ -599,20 +599,19 @@ default_data = load_default_data()
 
 if default_data is not None:
     st.success(f"✅ Using integrated dataset: {len(default_data):,} fixtures | Last updated: January 2026")
+    df = default_data  # Set df to default data initially
     
     # Option to upload custom file
     with st.expander("📤 Upload Custom Data (Optional)"):
         uploaded_file = st.file_uploader("Upload your own Excel file", type=['xlsx', 'xls'])
         if uploaded_file is not None:
             try:
-                df = pd.read_excel(uploaded_file)
-                df = translate_column_names(df)
-                st.info(f"Using custom uploaded file: {len(df):,} rows")
+                df_custom = pd.read_excel(uploaded_file)
+                df = translate_column_names(df_custom)
+                st.info(f"✅ Using custom uploaded file: {len(df):,} rows")
             except Exception as e:
-                st.error(f"Error loading custom file: {str(e)}")
-                df = default_data
-        else:
-            df = default_data
+                st.error(f"❌ Error loading custom file: {str(e)}")
+                df = default_data  # Fallback to default data
 else:
     st.warning("⚠️ No default data found. Please upload an Excel file.")
     uploaded_file = st.file_uploader("Upload Excel file with betting data", type=['xlsx', 'xls'])
@@ -621,8 +620,10 @@ else:
         try:
             df = pd.read_excel(uploaded_file)
             df = translate_column_names(df)
+            st.success(f"✅ File loaded: {len(df):,} rows")
         except Exception as e:
-            st.error(f"Error loading file: {str(e)}")
+            st.error(f"❌ Error loading file: {str(e)}")
+            st.exception(e)
             st.stop()
     else:
         st.info("👆 Please upload an Excel file to get started")
@@ -643,7 +644,10 @@ else:
         """)
         st.stop()
 
-if 'df' in locals():
+# Verify df exists before processing
+if 'df' not in locals() or df is None:
+    st.error("No data loaded. Please check your data file.")
+    st.stop()
     try:
         # Load data
         df = pd.read_excel(uploaded_file)
